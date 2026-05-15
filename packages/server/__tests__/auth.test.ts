@@ -18,7 +18,7 @@ test('registerUser creates a new user and returns the user row', () => {
   const user = registerUser(db, 'alice', 'password123');
   assert.equal(user.username, 'alice');
   assert.ok(user.id, 'user should have an id');
-  assert.ok(!('passwordHash' in user), 'passwordHash must not be returned');
+  assert.ok(!('password_hash' in user), 'password_hash must not be returned');
 });
 
 test('registerUser throws if username is already taken', () => {
@@ -33,7 +33,7 @@ test('loginUser returns user row on correct password', () => {
   registerUser(db, 'carol', 'secret');
   const user = loginUser(db, 'carol', 'secret');
   assert.equal(user.username, 'carol');
-  assert.ok(!('passwordHash' in user), 'passwordHash must not be returned');
+  assert.ok(!('password_hash' in user), 'password_hash must not be returned');
 });
 
 test('loginUser throws on wrong password', () => {

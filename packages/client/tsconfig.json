@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "../.."
+    "rootDir": "."
   },
-  "include": ["bin/**/*", "src/**/*", "../../packages/daemon/src/credentials.ts"]
+  "include": ["bin/**/*", "src/**/*"]
 }

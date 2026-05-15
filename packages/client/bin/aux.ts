@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 import { WebSocket } from 'ws';
 import { readFileSync, existsSync } from 'node:fs';
-import { saveCredentials } from '../../daemon/src/credentials.js';
+import { saveCredentials } from '../src/credentials.js';
 
 const PID_FILE = '/tmp/aux.pid';
 const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';

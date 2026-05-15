@@ -6,7 +6,7 @@
     "aux": "./bin/aux.ts"
   },
   "scripts": {
-    "start": "node dist/packages/client/bin/aux.js",
+    "start": "node dist/bin/aux.js",
     "dev": "tsx bin/aux.ts",
     "build": "tsc"
   },

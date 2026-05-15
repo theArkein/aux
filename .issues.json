@@ -1,0 +1,82 @@
+[
+  {
+    "number": 1,
+    "title": "Server bootstrap + daemon auth",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [],
+    "url": "https://github.com/theArkein/aux/issues/1"
+  },
+  {
+    "number": 2,
+    "title": "Named room create + join",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [1],
+    "url": "https://github.com/theArkein/aux/issues/2"
+  },
+  {
+    "number": 3,
+    "title": "TUI client attaches to daemon (detachable)",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [1],
+    "url": "https://github.com/theArkein/aux/issues/3"
+  },
+  {
+    "number": 4,
+    "title": "YouTube search + queue a track",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [2, 3],
+    "url": "https://github.com/theArkein/aux/issues/4"
+  },
+  {
+    "number": 5,
+    "title": "Audio playback + sync engine",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [4],
+    "url": "https://github.com/theArkein/aux/issues/5"
+  },
+  {
+    "number": 6,
+    "title": "Skip + vote-skip",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [5],
+    "url": "https://github.com/theArkein/aux/issues/6"
+  },
+  {
+    "number": 7,
+    "title": "Guest mode",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [2, 3],
+    "url": "https://github.com/theArkein/aux/issues/7"
+  },
+  {
+    "number": 8,
+    "title": "Friends + presence",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [1, 3],
+    "url": "https://github.com/theArkein/aux/issues/8"
+  },
+  {
+    "number": 9,
+    "title": "Spotify playlist import",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [4],
+    "url": "https://github.com/theArkein/aux/issues/9"
+  },
+  {
+    "number": 10,
+    "title": "AI DJ mode",
+    "state": "OPEN",
+    "labels": ["ready-for-agent"],
+    "blocked_by": [5],
+    "url": "https://github.com/theArkein/aux/issues/10"
+  }
+]

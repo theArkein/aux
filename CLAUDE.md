@@ -18,13 +18,16 @@ The daemon is the audio and network owner. The client is a dumb renderer.
 
 ## Tech Stack
 
+- **Language:** TypeScript (strict mode)
 - **Runtime:** Node.js ≥ 20
 - **Server transport:** `ws` (WebSocket library)
 - **Server storage:** `better-sqlite3` (SQLite)
 - **Auth:** `bcryptjs` (password hashing) + `jsonwebtoken` (JWT)
 - **TUI:** `ink` + `react` (React for CLI)
 - **Audio:** `yt-dlp` + `mpv` (external binaries, must be installed by user)
-- **Testing:** Node.js built-in `node:test` + `assert`
+- **Dev runner:** `tsx` (runs TypeScript directly, no compile step in dev)
+- **Build:** `tsc` (compiles to `dist/` for production)
+- **Testing:** Node.js built-in `node:test` + `assert`, run via `tsx --test`
 
 ## Key Concepts
 
@@ -56,12 +59,24 @@ Skip triggers when >50% of present room members have voted to skip.
 # Install all dependencies
 npm install
 
-# Run server in dev mode
+# Run server in dev mode (tsx, no compile step)
 npm run dev:server
+
+# Build all packages for production
+npm run build
 
 # Run tests for a specific package
 npm test --workspace=packages/server
 ```
+
+## TypeScript Conventions
+
+- All source files use `.ts` extension
+- Strict mode enabled (`"strict": true` in tsconfig)
+- Each package has its own `tsconfig.json` extending the root `tsconfig.base.json`
+- Shared types/interfaces live in `src/types.ts` within each package
+- Bin entry points use `#!/usr/bin/env tsx` shebang for development
+- Production bins point to compiled `dist/` output
 
 ## Testing Philosophy
 

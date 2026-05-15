@@ -14,3 +14,16 @@ export interface AuthenticatedWs {
   userId?: string;
   username?: string;
 }
+
+export interface Member {
+  id: string;
+  username: string;
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  hostId: string;
+  members: Member[];
+  createdAt: number;
+}

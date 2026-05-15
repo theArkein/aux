@@ -1,0 +1,22 @@
+{
+  "name": "@aux/client",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "aux": "./bin/aux.ts"
+  },
+  "scripts": {
+    "start": "node dist/bin/aux.js",
+    "dev": "tsx bin/aux.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13"
+  }
+}

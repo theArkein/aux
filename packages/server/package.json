@@ -1,6 +1,7 @@
 {
   "name": "@aux/server",
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
     "start": "node dist/src/server.js",
     "dev": "tsx watch src/server.ts",

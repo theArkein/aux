@@ -1,0 +1,14 @@
+{
+  "name": "aux",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "dev:server": "npm run dev --workspace=packages/server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

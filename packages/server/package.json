@@ -1,0 +1,26 @@
+{
+  "name": "@aux/server",
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node dist/src/server.js",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "test": "tsx --test '__tests__/**/*.test.ts'"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "better-sqlite3": "^11.5.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7"
+  }
+}

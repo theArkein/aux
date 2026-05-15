@@ -1,11 +1,13 @@
 import type Database from 'better-sqlite3';
-import type WebSocket from 'ws';
+import { WebSocket, type WebSocketServer } from 'ws';
 import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
-import type { User } from './types.js';
+import { createRoom, joinRoom, leaveRoom } from './rooms.js';
+import type { User, Room } from './types.js';
 
 interface IncomingWs extends WebSocket {
   userId?: string;
   username?: string;
+  roomId?: string;
 }
 
 interface AuthMessage {
@@ -16,11 +18,40 @@ interface AuthMessage {
   token?: string;
 }
 
+interface RoomCreateMessage {
+  event: 'room:create';
+  name: string;
+}
+
+interface RoomJoinMessage {
+  event: 'room:join';
+  name: string;
+}
+
+interface RoomLeaveMessage {
+  event: 'room:leave';
+}
+
 function reply(ws: WebSocket, data: object): void {
   ws.send(JSON.stringify(data));
 }
 
-function handleAuth(db: Database.Database, jwtSecret: string, ws: IncomingWs, msg: AuthMessage): void {
+function broadcastToRoom(wss: WebSocketServer, room: Room, data: object): void {
+  const memberIds = new Set(room.members.map((m) => m.id));
+  for (const client of wss.clients) {
+    const c = client as IncomingWs;
+    if (c.userId && memberIds.has(c.userId) && c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify(data));
+    }
+  }
+}
+
+function handleAuth(
+  db: Database.Database,
+  jwtSecret: string,
+  ws: IncomingWs,
+  msg: AuthMessage
+): void {
   try {
     let user: User;
 
@@ -60,7 +91,69 @@ function handleAuth(db: Database.Database, jwtSecret: string, ws: IncomingWs, ms
   }
 }
 
-export function handleMessage(db: Database.Database, jwtSecret: string, ws: IncomingWs, raw: string): void {
+function handleRoomCreate(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs,
+  msg: RoomCreateMessage
+): void {
+  if (!ws.userId || !ws.username) {
+    reply(ws, { event: 'room:error', code: 'UNAUTHENTICATED' });
+    return;
+  }
+  try {
+    const room = createRoom(rooms, msg.name, { id: ws.userId, username: ws.username });
+    ws.roomId = room.id;
+    reply(ws, { event: 'state:sync', room });
+  } catch (err) {
+    reply(ws, { event: 'room:error', code: (err as Error).message });
+  }
+}
+
+function handleRoomJoin(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs,
+  msg: RoomJoinMessage
+): void {
+  if (!ws.userId || !ws.username) {
+    reply(ws, { event: 'room:error', code: 'UNAUTHENTICATED' });
+    return;
+  }
+  try {
+    const room = joinRoom(rooms, msg.name, { id: ws.userId, username: ws.username });
+    ws.roomId = room.id;
+    broadcastToRoom(wss, room, { event: 'state:sync', room });
+  } catch (err) {
+    reply(ws, { event: 'room:error', code: (err as Error).message });
+  }
+}
+
+function handleRoomLeave(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs
+): void {
+  if (!ws.userId || !ws.roomId) {
+    reply(ws, { event: 'room:error', code: 'NOT_IN_ROOM' });
+    return;
+  }
+  const updated = leaveRoom(rooms, ws.roomId, ws.userId);
+  ws.roomId = undefined;
+  reply(ws, { event: 'room:left' });
+  if (updated) {
+    broadcastToRoom(wss, updated, { event: 'state:sync', room: updated });
+  }
+}
+
+export function handleMessage(
+  db: Database.Database,
+  jwtSecret: string,
+  ws: IncomingWs,
+  raw: string,
+  rooms: Map<string, Room>,
+  wss: WebSocketServer
+): void {
   let msg: Record<string, unknown>;
   try {
     msg = JSON.parse(raw);
@@ -71,6 +164,21 @@ export function handleMessage(db: Database.Database, jwtSecret: string, ws: Inco
 
   if (msg['event'] === 'auth') {
     handleAuth(db, jwtSecret, ws, msg as unknown as AuthMessage);
+    return;
+  }
+
+  if (msg['event'] === 'room:create') {
+    handleRoomCreate(rooms, wss, ws, msg as unknown as RoomCreateMessage);
+    return;
+  }
+
+  if (msg['event'] === 'room:join') {
+    handleRoomJoin(rooms, wss, ws, msg as unknown as RoomJoinMessage);
+    return;
+  }
+
+  if (msg['event'] === 'room:leave') {
+    handleRoomLeave(rooms, wss, ws);
     return;
   }
 

@@ -18,7 +18,7 @@
   {
     "number": 3,
     "title": "TUI client attaches to daemon (detachable)",
-    "state": "OPEN",
+    "state": "CLOSED",
     "labels": ["ready-for-agent"],
     "blocked_by": [1],
     "url": "https://github.com/theArkein/aux/issues/3"

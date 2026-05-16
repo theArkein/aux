@@ -33,7 +33,7 @@ export function joinRoom(rooms: Map<string, Room>, roomName: string, member: Mem
   const room = getRoomByName(rooms, roomName);
   if (!room) throw new Error('ROOM_NOT_FOUND');
   if (!room.members.some((m) => m.id === member.id)) {
-    room.members.push({ id: member.id, username: member.username });
+    room.members.push({ id: member.id, username: member.username, isGuest: member.isGuest });
   }
   return room;
 }

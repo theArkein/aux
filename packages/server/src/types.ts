@@ -13,6 +13,7 @@ export interface UserRow {
 export interface Member {
   id: string;
   username: string;
+  isGuest?: boolean;
 }
 
 export interface Track {

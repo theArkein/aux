@@ -123,6 +123,10 @@ function handleRoomCreate(
     reply(ws, { event: 'room:error', code: 'UNAUTHENTICATED' });
     return;
   }
+  if (ws.isGuest) {
+    reply(ws, { event: 'room:error', code: 'GUESTS_CANNOT_CREATE_ROOMS' });
+    return;
+  }
   try {
     const room = createRoom(rooms, msg.name, { id: ws.userId, username: ws.username });
     ws.roomId = room.id;
@@ -143,7 +147,7 @@ function handleRoomJoin(
     return;
   }
   try {
-    const room = joinRoom(rooms, msg.name, { id: ws.userId, username: ws.username });
+    const room = joinRoom(rooms, msg.name, { id: ws.userId, username: ws.username, isGuest: ws.isGuest });
     ws.roomId = room.id;
     broadcastToRoom(wss, room, { event: 'state:sync', room });
   } catch (err) {

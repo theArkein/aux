@@ -1,6 +1,5 @@
 import { connect } from 'node:net';
-
-const IPC_PATH = '/tmp/aux.sock';
+import { IPC_PATH } from './constants.js';
 
 export interface IpcClientHandle {
   send(msg: object): void;

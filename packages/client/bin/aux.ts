@@ -6,12 +6,11 @@ import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveCredentials, loadCredentials } from '../src/credentials.js';
+import { IPC_PATH, PID_FILE } from '../src/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PID_FILE = '/tmp/aux.pid';
-const IPC_PATH = '/tmp/aux.sock';
 const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
 const DAEMON_BIN = resolve(__dirname, '../../daemon/bin/auxd.ts');
 
@@ -188,7 +187,7 @@ async function waitForSocket(path: string, timeoutMs: number): Promise<void> {
     if (available) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error('Daemon not ready after 5s — check AUX_SERVER_URL and try again');
+  throw new Error('Daemon did not open /tmp/aux.sock within 5s — run: aux quit && aux to restart');
 }
 
 main().catch((err: Error) => {

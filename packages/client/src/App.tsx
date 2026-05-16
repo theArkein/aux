@@ -38,7 +38,7 @@ export default function App(): React.ReactElement {
         }
       },
       onEnd: exit,
-      onError: () => exit(),
+      onError: (err) => { process.stderr.write(err.message + '\n'); exit(); },
     });
     return () => { client.close(); };
   }, [exit]);

@@ -141,3 +141,126 @@ test('room:join returns ROOM_NOT_FOUND for unknown room', async () => {
     await new Promise((r) => ws.once('close', r));
   }
 });
+
+test('room:leave — remaining member receives updated state:sync', async () => {
+  const wsAlice = openWs();
+  const wsBob = openWs();
+  try {
+    await authenticate(wsAlice, 'alice', 'pass');
+    send(wsAlice, { event: 'room:create', name: 'leaveroom' });
+    await waitMsg(wsAlice); // state:sync
+
+    await authenticate(wsBob, 'bob', 'pass');
+    const aliceJoinP = waitMsg(wsAlice);
+    const bobJoinP = waitMsg(wsBob);
+    send(wsBob, { event: 'room:join', name: 'leaveroom' });
+    await Promise.all([aliceJoinP, bobJoinP]); // both receive state:sync
+
+    // Bob leaves; Alice should receive an updated state:sync with only herself
+    const aliceUpdateP = waitMsg(wsAlice);
+    send(wsBob, { event: 'room:leave' });
+    await waitMsg(wsBob); // room:left confirmation
+    const aliceUpdate = await aliceUpdateP;
+    assert.equal(aliceUpdate['event'], 'state:sync');
+    const room = aliceUpdate['room'] as Record<string, unknown>;
+    const members = room['members'] as Array<{ username: string }>;
+    assert.equal(members.length, 1);
+    assert.equal(members[0]!.username, 'alice');
+  } finally {
+    wsAlice.close();
+    wsBob.close();
+    await Promise.all([
+      new Promise((r) => wsAlice.once('close', r)),
+      new Promise((r) => wsBob.once('close', r)),
+    ]);
+  }
+});
+
+test('room:leave — host leaves, next member becomes host', async () => {
+  const wsAlice = openWs();
+  const wsBob = openWs();
+  try {
+    await authenticate(wsAlice, 'alice', 'pass');
+    send(wsAlice, { event: 'room:create', name: 'hosttransfer' });
+    const aliceSync1 = await waitMsg(wsAlice);
+    const aliceRoom1 = aliceSync1['room'] as Record<string, unknown>;
+    const hostId = aliceRoom1['hostId'] as string;
+
+    await authenticate(wsBob, 'bob', 'pass');
+    const aliceJoinP = waitMsg(wsAlice);
+    const bobJoinP = waitMsg(wsBob);
+    send(wsBob, { event: 'room:join', name: 'hosttransfer' });
+    await Promise.all([aliceJoinP, bobJoinP]);
+
+    // Alice (host) leaves; Bob should receive state:sync where he is the new host
+    const bobUpdateP = waitMsg(wsBob);
+    send(wsAlice, { event: 'room:leave' });
+    await waitMsg(wsAlice); // room:left
+    const bobUpdate = await bobUpdateP;
+    assert.equal(bobUpdate['event'], 'state:sync');
+    const room = bobUpdate['room'] as Record<string, unknown>;
+    assert.notEqual(room['hostId'], hostId);
+    const members = room['members'] as Array<{ id: string }>;
+    assert.equal(members.length, 1);
+    assert.equal(room['hostId'], members[0]!.id);
+  } finally {
+    wsAlice.close();
+    wsBob.close();
+    await Promise.all([
+      new Promise((r) => wsAlice.once('close', r)),
+      new Promise((r) => wsBob.once('close', r)),
+    ]);
+  }
+});
+
+test('room:leave — last member leaves, room is deleted without error', async () => {
+  const ws = openWs();
+  try {
+    await authenticate(ws, 'alice', 'pass');
+    send(ws, { event: 'room:create', name: 'soloroom' });
+    await waitMsg(ws); // state:sync
+
+    send(ws, { event: 'room:leave' });
+    const msg = await waitMsg(ws);
+    assert.equal(msg['event'], 'room:left');
+
+    // Verify room is gone — join attempt should return ROOM_NOT_FOUND
+    send(ws, { event: 'room:join', name: 'soloroom' });
+    const notFound = await waitMsg(ws);
+    assert.equal(notFound['event'], 'room:error');
+    assert.equal(notFound['code'], 'ROOM_NOT_FOUND');
+  } finally {
+    ws.close();
+    await new Promise((r) => ws.once('close', r));
+  }
+});
+
+test('disconnect without room:leave — member is cleaned up from room', async () => {
+  const wsAlice = openWs();
+  const wsBob = openWs();
+  try {
+    await authenticate(wsAlice, 'alice', 'pass');
+    send(wsAlice, { event: 'room:create', name: 'cleanuproom' });
+    await waitMsg(wsAlice); // state:sync
+
+    await authenticate(wsBob, 'bob', 'pass');
+    const aliceJoinP = waitMsg(wsAlice);
+    const bobJoinP = waitMsg(wsBob);
+    send(wsBob, { event: 'room:join', name: 'cleanuproom' });
+    await Promise.all([aliceJoinP, bobJoinP]);
+
+    // Bob disconnects abruptly — Alice should receive state:sync with only herself
+    const aliceUpdateP = waitMsg(wsAlice);
+    wsBob.close();
+    await new Promise((r) => wsBob.once('close', r));
+    const aliceUpdate = await aliceUpdateP;
+    assert.equal(aliceUpdate['event'], 'state:sync');
+    const room = aliceUpdate['room'] as Record<string, unknown>;
+    const members = room['members'] as Array<{ username: string }>;
+    assert.equal(members.length, 1);
+    assert.equal(members[0]!.username, 'alice');
+  } finally {
+    wsAlice.close();
+    await new Promise((r) => wsAlice.once('close', r));
+  }
+});

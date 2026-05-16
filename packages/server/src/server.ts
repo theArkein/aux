@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { initDb, closeDb } from './db.js';
-import { handleMessage } from './ws-handler.js';
+import { handleMessage, handleDisconnect, type IncomingWs } from './ws-handler.js';
 import type { Room } from './types.js';
 import type Database from 'better-sqlite3';
 import type { Server } from 'node:http';
@@ -33,10 +33,12 @@ export async function startServer(opts: ServerOptions = {}): Promise<ServerHandl
   const wss = new WebSocketServer({ server: httpServer });
 
   wss.on('connection', (ws) => {
-    ws.on('message', (raw) =>
-      handleMessage(db, jwtSecret, ws, raw.toString(), rooms, wss)
+    const typedWs = ws as IncomingWs;
+    typedWs.on('message', (raw) =>
+      handleMessage(db, jwtSecret, typedWs, raw.toString(), rooms, wss)
     );
-    ws.on('error', (err) => console.error('ws error:', err.message));
+    typedWs.on('error', (err) => console.error('ws error:', err.message));
+    typedWs.on('close', () => handleDisconnect(rooms, wss, typedWs));
   });
 
   await new Promise<void>((resolve) => httpServer.listen(port, resolve));

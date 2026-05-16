@@ -4,7 +4,7 @@ import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
 import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import type { User, Room } from './types.js';
 
-interface IncomingWs extends WebSocket {
+export interface IncomingWs extends WebSocket {
   userId?: string;
   username?: string;
   roomId?: string;
@@ -93,7 +93,6 @@ function handleAuth(
 
 function handleRoomCreate(
   rooms: Map<string, Room>,
-  wss: WebSocketServer,
   ws: IncomingWs,
   msg: RoomCreateMessage
 ): void {
@@ -146,6 +145,20 @@ function handleRoomLeave(
   }
 }
 
+export function handleDisconnect(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs
+): void {
+  if (ws.roomId && ws.userId) {
+    const updated = leaveRoom(rooms, ws.roomId, ws.userId);
+    ws.roomId = undefined;
+    if (updated) {
+      broadcastToRoom(wss, updated, { event: 'state:sync', room: updated });
+    }
+  }
+}
+
 export function handleMessage(
   db: Database.Database,
   jwtSecret: string,
@@ -168,11 +181,19 @@ export function handleMessage(
   }
 
   if (msg['event'] === 'room:create') {
-    handleRoomCreate(rooms, wss, ws, msg as unknown as RoomCreateMessage);
+    if (typeof msg['name'] !== 'string') {
+      reply(ws, { event: 'room:error', code: 'MISSING_FIELDS' });
+      return;
+    }
+    handleRoomCreate(rooms, ws, msg as unknown as RoomCreateMessage);
     return;
   }
 
   if (msg['event'] === 'room:join') {
+    if (typeof msg['name'] !== 'string') {
+      reply(ws, { event: 'room:error', code: 'MISSING_FIELDS' });
+      return;
+    }
     handleRoomJoin(rooms, wss, ws, msg as unknown as RoomJoinMessage);
     return;
   }

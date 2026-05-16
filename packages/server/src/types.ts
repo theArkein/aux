@@ -10,11 +10,6 @@ export interface UserRow {
   created_at: number;
 }
 
-export interface AuthenticatedWs {
-  userId?: string;
-  username?: string;
-}
-
 export interface Member {
   id: string;
   username: string;

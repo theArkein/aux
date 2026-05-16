@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { createIpcClient, type IpcClientHandle } from './ipc-client.js';
 
-type PanelId = 'nowPlaying' | 'queue' | 'members';
-const PANELS: PanelId[] = ['nowPlaying', 'queue', 'members'];
+type PanelId = 'nowPlaying' | 'queue' | 'members' | 'friends';
+const PANELS: PanelId[] = ['nowPlaying', 'queue', 'members', 'friends'];
 
 interface Member { id: string; username: string; isGuest?: boolean; }
 
@@ -34,6 +34,13 @@ interface SearchResult {
   artist: string;
   duration: number;
   youtubeUrl: string;
+}
+
+interface FriendPresence {
+  id: string;
+  username: string;
+  status: 'online' | 'offline';
+  roomName: string | null;
 }
 
 type Mode = 'normal' | 'typing' | 'results';
@@ -75,6 +82,8 @@ export default function App(): React.ReactElement {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [friends, setFriends] = useState<FriendPresence[]>([]);
+  const [selectedFriendIdx, setSelectedFriendIdx] = useState(0);
   const clientRef = useRef<IpcClientHandle | null>(null);
 
   useEffect(() => {
@@ -115,6 +124,10 @@ export default function App(): React.ReactElement {
         if (m['event'] === 'search:error') {
           setMode('normal');
           setQuery('');
+        }
+
+        if (m['event'] === 'friends:list' && Array.isArray(m['friends'])) {
+          setFriends(m['friends'] as FriendPresence[]);
         }
       },
       onEnd: exit,
@@ -157,6 +170,24 @@ export default function App(): React.ReactElement {
       if (input === 'x') {
         clientRef.current?.send({ event: 'queue:skip' });
         return;
+      }
+
+      if (focused === 'friends') {
+        if (key.upArrow) {
+          setSelectedFriendIdx((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setSelectedFriendIdx((i) => Math.min(friends.length - 1, i + 1));
+          return;
+        }
+        if (key.return) {
+          const friend = friends[selectedFriendIdx];
+          if (friend?.roomName) {
+            clientRef.current?.send({ event: 'room:join', name: friend.roomName });
+          }
+          return;
+        }
       }
     }
 
@@ -278,9 +309,27 @@ export default function App(): React.ReactElement {
                   ))
                 : <Text dimColor>No members</Text>}
             </PanelBox>
+            <PanelBox title="Friends" focused={focused === 'friends'}>
+              {friends.length > 0
+                ? friends.map((f, i) => (
+                    <Box key={f.id}>
+                      <Text color={focused === 'friends' && i === selectedFriendIdx ? 'cyan' : undefined}>
+                        {focused === 'friends' && i === selectedFriendIdx ? '▶ ' : '  '}
+                        {f.username}
+                        {f.status === 'online'
+                          ? <Text color="green">{f.roomName ? ` ● ${f.roomName}` : ' ●'}</Text>
+                          : <Text dimColor> ○</Text>}
+                      </Text>
+                    </Box>
+                  ))
+                : <Text dimColor>No friends</Text>}
+            </PanelBox>
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>Tab: switch panel  ·  s: search  ·  x: skip  ·  +/-: volume  ·  q: quit TUI</Text>
+            <Text dimColor>
+              {'Tab: switch panel  ·  s: search  ·  x: skip  ·  +/-: volume  ·  q: quit TUI'}
+              {focused === 'friends' && friends.length > 0 ? '  ·  Enter: join room' : ''}
+            </Text>
           </Box>
         </>
       )}

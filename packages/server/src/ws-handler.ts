@@ -3,6 +3,7 @@ import { WebSocket, type WebSocketServer } from 'ws';
 import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
 import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import { addTrack } from './queue.js';
+import { startPlayback, endPlayback } from './playback.js';
 import type { User, Room } from './types.js';
 
 export interface IncomingWs extends WebSocket {
@@ -178,8 +179,34 @@ function handleQueueAdd(
       queuedBy: ws.userId,
     });
     broadcastToRoom(wss, room, { event: 'queue:update', queue: room.queue });
+    const nextTrack = startPlayback(room);
+    if (nextTrack) {
+      const startAt = Date.now() + 200;
+      broadcastToRoom(wss, room, { event: 'playback:next', track: nextTrack, startAt });
+    }
   } catch (err) {
     reply(ws, { event: 'queue:error', code: (err as Error).message });
+  }
+}
+
+function handlePlaybackEnded(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs
+): void {
+  if (!ws.userId || !ws.roomId) {
+    reply(ws, { event: 'playback:error', code: 'NOT_IN_ROOM' });
+    return;
+  }
+  const room = rooms.get(ws.roomId);
+  if (!room) return;
+
+  const nextTrack = endPlayback(room);
+  broadcastToRoom(wss, room, { event: 'state:sync', room });
+
+  if (nextTrack) {
+    const startAt = Date.now() + 200;
+    broadcastToRoom(wss, room, { event: 'playback:next', track: nextTrack, startAt });
   }
 }
 
@@ -252,6 +279,11 @@ export function handleMessage(
       return;
     }
     handleQueueAdd(rooms, wss, ws, msg as unknown as QueueAddMessage);
+    return;
+  }
+
+  if (msg['event'] === 'playback:ended') {
+    handlePlaybackEnded(rooms, wss, ws);
     return;
   }
 

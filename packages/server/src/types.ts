@@ -30,5 +30,7 @@ export interface Room {
   hostId: string;
   members: Member[];
   queue: Track[];
+  nowPlaying: Track | null;
+  playbackStartedAt: number | null;
   createdAt: number;
 }

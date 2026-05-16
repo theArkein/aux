@@ -2,7 +2,8 @@ import 'dotenv/config';
 import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { initDb, closeDb } from './db.js';
-import { handleMessage } from './ws-handler.js';
+import { handleMessage, handleDisconnect, type IncomingWs } from './ws-handler.js';
+import type { Room } from './types.js';
 import type Database from 'better-sqlite3';
 import type { Server } from 'node:http';
 
@@ -16,6 +17,7 @@ export interface ServerHandle {
   httpServer: Server;
   wss: WebSocketServer;
   db: Database.Database;
+  rooms: Map<string, Room>;
 }
 
 export async function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
@@ -26,24 +28,31 @@ export async function startServer(opts: ServerOptions = {}): Promise<ServerHandl
   if (!jwtSecret) throw new Error('JWT_SECRET is required');
 
   const db = initDb(dbPath);
+  const rooms = new Map<string, Room>();
   const httpServer = createServer();
   const wss = new WebSocketServer({ server: httpServer });
 
   wss.on('connection', (ws) => {
-    ws.on('message', (raw) => handleMessage(db, jwtSecret, ws, raw.toString()));
-    ws.on('error', (err) => console.error('ws error:', err.message));
+    const typedWs = ws as IncomingWs;
+    typedWs.on('message', (raw) =>
+      handleMessage(db, jwtSecret, typedWs, raw.toString(), rooms, wss)
+    );
+    typedWs.on('error', (err) => console.error('ws error:', err.message));
+    typedWs.on('close', () => handleDisconnect(rooms, wss, typedWs));
   });
 
   await new Promise<void>((resolve) => httpServer.listen(port, resolve));
   console.log(`aux-server listening on :${port}`);
 
-  return { httpServer, wss, db };
+  return { httpServer, wss, db, rooms };
 }
 
 export async function stopServer({ httpServer, wss, db }: ServerHandle): Promise<void> {
   wss.close();
   closeDb(db);
-  await new Promise<void>((resolve, reject) => httpServer.close((err) => err ? reject(err) : resolve()));
+  await new Promise<void>((resolve, reject) =>
+    httpServer.close((err) => (err ? reject(err) : resolve()))
+  );
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

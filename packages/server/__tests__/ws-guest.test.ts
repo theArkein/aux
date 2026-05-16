@@ -144,8 +144,6 @@ test('guest can queue:add a track', async () => {
     await Promise.all([ap, gp]); // both receive state:sync
 
     // Guest queues a track
-    const aliceUpdateP = qa.next();
-    const guestUpdateP = qg.next();
     guest.send(JSON.stringify({
       event: 'queue:add',
       youtubeUrl: 'https://youtube.com/watch?v=gst1',
@@ -153,10 +151,17 @@ test('guest can queue:add a track', async () => {
       artist: 'G',
       duration: 100,
     }));
-    const [aliceUpdate] = await Promise.all([aliceUpdateP, guestUpdateP]);
+    const aliceUpdate = await qa.next();
+    const guestUpdate = await qg.next();
     assert.equal(aliceUpdate['event'], 'queue:update');
+    assert.equal(guestUpdate['event'], 'queue:update');
     const queue = aliceUpdate['queue'] as Array<{ title: string }>;
     assert.equal(queue[0]!.title, 'GuestTrack');
+    // drain playback:next so buffer stays clean
+    const alicePb = await qa.next();
+    const guestPb = await qg.next();
+    assert.equal(alicePb['event'], 'playback:next');
+    assert.equal(guestPb['event'], 'playback:next');
   } finally {
     await closeWs(alice);
     await closeWs(guest);
@@ -190,18 +195,21 @@ test('guest vote-skip is registered', async () => {
     const syncForAliceP = qa.next();
     const syncForGuestP = qg.next();
     guest.send(JSON.stringify({ event: 'queue:skip' }));
-    const [syncForAlice] = await Promise.all([syncForAliceP, syncForGuestP]);
+    const [syncForAlice, syncForGuest] = await Promise.all([syncForAliceP, syncForGuestP]);
 
     assert.equal(syncForAlice['event'], 'state:sync');
     const room = syncForAlice['room'] as Record<string, unknown>;
     assert.equal((room['skipVotes'] as string[]).length, 1);
+    assert.equal(syncForGuest['event'], 'state:sync');
+    const roomG = syncForGuest['room'] as Record<string, unknown>;
+    assert.equal((roomG['skipVotes'] as string[]).length, 1);
   } finally {
     await closeWs(alice);
     await closeWs(guest);
   }
 });
 
-test('guest disconnect clears them from the room', async () => {
+test('guest disconnect clears them from the room', { timeout: 3000 }, async () => {
   const { ws: alice, q: qa } = await openAndAuthUser('alice', 'passw');
   const { ws: guest, q: qg } = await authenticateAsGuest();
   try {
@@ -234,8 +242,8 @@ test('two guests get independent guest_ usernames', async () => {
   try {
     assert.match(u1, /^guest_[0-9a-f]{4}$/);
     assert.match(u2, /^guest_[0-9a-f]{4}$/);
-    // Collision is 1-in-65536; we just verify both are valid guest usernames
-    assert.ok(typeof u1 === 'string' && typeof u2 === 'string');
+    // 1-in-65536 collision chance; asserting inequality catches the common bug where the same ID is reused
+    assert.notEqual(u1, u2);
   } finally {
     await closeWs(g1);
     await closeWs(g2);

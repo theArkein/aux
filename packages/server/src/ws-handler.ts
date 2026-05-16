@@ -3,6 +3,7 @@ import { WebSocket, type WebSocketServer } from 'ws';
 import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
 import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import { addTrack } from './queue.js';
+import { registerVote } from './skip.js';
 import { startPlayback, endPlayback } from './playback.js';
 import type { User, Room } from './types.js';
 
@@ -40,6 +41,10 @@ interface QueueAddMessage {
   title: string;
   artist: string;
   duration: number;
+}
+
+interface QueueSkipMessage {
+  event: 'queue:skip';
 }
 
 function reply(ws: WebSocket, data: object): void {
@@ -210,6 +215,48 @@ function handlePlaybackEnded(
   }
 }
 
+function handleQueueSkip(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs
+): void {
+  if (!ws.userId || !ws.roomId) {
+    reply(ws, { event: 'queue:error', code: 'NOT_IN_ROOM' });
+    return;
+  }
+  const room = rooms.get(ws.roomId);
+  if (!room) {
+    reply(ws, { event: 'queue:error', code: 'ROOM_NOT_FOUND' });
+    return;
+  }
+  if (!room.nowPlaying) {
+    reply(ws, { event: 'queue:error', code: 'NOTHING_PLAYING' });
+    return;
+  }
+
+  if (ws.userId === room.hostId) {
+    room.skipVotes = [];
+    const nextTrack = endPlayback(room);
+    broadcastToRoom(wss, room, { event: 'state:sync', room });
+    if (nextTrack) {
+      const startAt = Date.now() + 200;
+      broadcastToRoom(wss, room, { event: 'playback:next', track: nextTrack, startAt });
+    }
+  } else {
+    const result = registerVote(room, ws.userId);
+    if (result.triggered) {
+      const nextTrack = endPlayback(room);
+      broadcastToRoom(wss, room, { event: 'state:sync', room });
+      if (nextTrack) {
+        const startAt = Date.now() + 200;
+        broadcastToRoom(wss, room, { event: 'playback:next', track: nextTrack, startAt });
+      }
+    } else {
+      broadcastToRoom(wss, room, { event: 'state:sync', room });
+    }
+  }
+}
+
 export function handleDisconnect(
   rooms: Map<string, Room>,
   wss: WebSocketServer,
@@ -284,6 +331,11 @@ export function handleMessage(
 
   if (msg['event'] === 'playback:ended') {
     handlePlaybackEnded(rooms, wss, ws);
+    return;
+  }
+
+  if (msg['event'] === 'queue:skip') {
+    handleQueueSkip(rooms, wss, ws);
     return;
   }
 

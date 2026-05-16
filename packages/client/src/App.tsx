@@ -21,6 +21,7 @@ interface RoomState {
   queue: Track[];
   nowPlaying: Track | null;
   playbackStartedAt: number | null;
+  skipVotes: string[];
 }
 
 interface PlaybackState {
@@ -153,6 +154,10 @@ export default function App(): React.ReactElement {
         clientRef.current?.send({ event: 'volume:down' });
         return;
       }
+      if (input === 'x') {
+        clientRef.current?.send({ event: 'queue:skip' });
+        return;
+      }
     }
 
     if (mode === 'typing') {
@@ -243,6 +248,11 @@ export default function App(): React.ReactElement {
                   <Text dimColor>
                     {formatDuration(clampedElapsed)} / {formatDuration(playback.track.duration)}
                   </Text>
+                  {room && room.skipVotes.length > 0 && (
+                    <Text color="yellow">
+                      {room.skipVotes.length}/{room.members.length} votes to skip
+                    </Text>
+                  )}
                 </Box>
               ) : (
                 <Text dimColor>{room ? 'Nothing playing' : 'Not in a room'}</Text>
@@ -266,7 +276,7 @@ export default function App(): React.ReactElement {
             </PanelBox>
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>Tab: switch panel  ·  s: search  ·  +/-: volume  ·  q: quit TUI</Text>
+            <Text dimColor>Tab: switch panel  ·  s: search  ·  x: skip  ·  +/-: volume  ·  q: quit TUI</Text>
           </Box>
         </>
       )}

@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 import { WebSocket } from 'ws';
 import { readFileSync, existsSync } from 'node:fs';
-import { saveCredentials } from '../src/credentials.js';
+import { saveCredentials, loadCredentials } from '../src/credentials.js';
 
 const PID_FILE = '/tmp/aux.pid';
 const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
@@ -29,6 +29,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === 'create') {
+    const [name] = args;
+    if (!name) {
+      console.error('Usage: aux create <name>');
+      process.exit(1);
+    }
+    await roomCommand('room:create', { name });
+    return;
+  }
+
+  if (command === 'join') {
+    const [name] = args;
+    if (!name) {
+      console.error('Usage: aux join <name>');
+      process.exit(1);
+    }
+    await roomCommand('room:join', { name });
+    return;
+  }
+
   if (command === 'quit') {
     if (!existsSync(PID_FILE)) {
       console.log('Daemon is not running.');
@@ -41,7 +61,7 @@ async function main(): Promise<void> {
   }
 
   console.error(`Unknown command: ${command ?? '(none)'}`);
-  console.error('Available commands: register, login, quit');
+  console.error('Available commands: register, login, create, join, quit');
   process.exit(1);
 }
 
@@ -61,6 +81,50 @@ async function authCommand(action: 'register' | 'login', username: string, passw
         ws.close();
         resolve();
       } else if (msg['event'] === 'auth:error') {
+        console.error(`Error: ${msg['code'] as string}`);
+        ws.close();
+        reject(new Error(msg['code'] as string));
+      }
+    });
+
+    ws.on('error', reject);
+  });
+}
+
+async function roomCommand(event: 'room:create' | 'room:join', extra: Record<string, string>): Promise<void> {
+  const creds = loadCredentials();
+  if (!creds) {
+    console.error('Not logged in. Run: aux login <username> <password>');
+    process.exit(1);
+  }
+
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(SERVER_URL);
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ event: 'auth', action: 'token', token: creds.token }));
+    });
+
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as Record<string, unknown>;
+
+      if (msg['event'] === 'auth:ok') {
+        ws.send(JSON.stringify({ event, ...extra }));
+        return;
+      }
+
+      if (msg['event'] === 'state:sync') {
+        const room = msg['room'] as Record<string, unknown>;
+        const members = (room['members'] as Array<{ username: string }>)
+          .map((m) => m.username)
+          .join(', ');
+        console.log(`Room: ${room['name'] as string} (members: ${members})`);
+        ws.close();
+        resolve();
+        return;
+      }
+
+      if (msg['event'] === 'room:error' || msg['event'] === 'auth:error') {
         console.error(`Error: ${msg['code'] as string}`);
         ws.close();
         reject(new Error(msg['code'] as string));

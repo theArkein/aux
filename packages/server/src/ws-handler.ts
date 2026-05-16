@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { WebSocket, type WebSocketServer } from 'ws';
 import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
 import { createRoom, joinRoom, leaveRoom } from './rooms.js';
+import { addTrack } from './queue.js';
 import type { User, Room } from './types.js';
 
 export interface IncomingWs extends WebSocket {
@@ -30,6 +31,14 @@ interface RoomJoinMessage {
 
 interface RoomLeaveMessage {
   event: 'room:leave';
+}
+
+interface QueueAddMessage {
+  event: 'queue:add';
+  youtubeUrl: string;
+  title: string;
+  artist: string;
+  duration: number;
 }
 
 function reply(ws: WebSocket, data: object): void {
@@ -145,6 +154,35 @@ function handleRoomLeave(
   }
 }
 
+function handleQueueAdd(
+  rooms: Map<string, Room>,
+  wss: WebSocketServer,
+  ws: IncomingWs,
+  msg: QueueAddMessage
+): void {
+  if (!ws.userId || !ws.roomId) {
+    reply(ws, { event: 'queue:error', code: 'NOT_IN_ROOM' });
+    return;
+  }
+  const room = rooms.get(ws.roomId);
+  if (!room) {
+    reply(ws, { event: 'queue:error', code: 'ROOM_NOT_FOUND' });
+    return;
+  }
+  try {
+    addTrack(room, {
+      youtubeUrl: msg.youtubeUrl,
+      title: msg.title,
+      artist: msg.artist,
+      duration: msg.duration,
+      queuedBy: ws.userId,
+    });
+    broadcastToRoom(wss, room, { event: 'queue:update', queue: room.queue });
+  } catch (err) {
+    reply(ws, { event: 'queue:error', code: (err as Error).message });
+  }
+}
+
 export function handleDisconnect(
   rooms: Map<string, Room>,
   wss: WebSocketServer,
@@ -200,6 +238,20 @@ export function handleMessage(
 
   if (msg['event'] === 'room:leave') {
     handleRoomLeave(rooms, wss, ws);
+    return;
+  }
+
+  if (msg['event'] === 'queue:add') {
+    if (
+      typeof msg['youtubeUrl'] !== 'string' ||
+      typeof msg['title'] !== 'string' ||
+      typeof msg['artist'] !== 'string' ||
+      typeof msg['duration'] !== 'number'
+    ) {
+      reply(ws, { event: 'queue:error', code: 'MISSING_FIELDS' });
+      return;
+    }
+    handleQueueAdd(rooms, wss, ws, msg as unknown as QueueAddMessage);
     return;
   }
 

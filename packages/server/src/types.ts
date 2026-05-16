@@ -15,10 +15,20 @@ export interface Member {
   username: string;
 }
 
+export interface Track {
+  id: string;
+  youtubeUrl: string;
+  title: string;
+  artist: string;
+  duration: number; // seconds
+  queuedBy: string; // userId
+}
+
 export interface Room {
   id: string;
   name: string;
   hostId: string;
   members: Member[];
+  queue: Track[];
   createdAt: number;
 }

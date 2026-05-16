@@ -2,7 +2,7 @@
   {
     "number": 1,
     "title": "Server bootstrap + daemon auth",
-    "state": "OPEN",
+    "state": "CLOSED",
     "labels": ["ready-for-agent"],
     "blocked_by": [],
     "url": "https://github.com/theArkein/aux/issues/1"
@@ -10,7 +10,7 @@
   {
     "number": 2,
     "title": "Named room create + join",
-    "state": "OPEN",
+    "state": "CLOSED",
     "labels": ["ready-for-agent"],
     "blocked_by": [1],
     "url": "https://github.com/theArkein/aux/issues/2"

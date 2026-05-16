@@ -35,3 +35,9 @@ export function signToken(payload: User, secret: string): string {
 export function verifyToken(token: string, secret: string): User {
   return jwt.verify(token, secret) as User;
 }
+
+export function createGuestSession(): User {
+  const id = randomUUID();
+  const shortCode = id.replace(/-/g, '').slice(0, 4);
+  return { id, username: `guest_${shortCode}` };
+}

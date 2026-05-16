@@ -43,6 +43,10 @@ async function main(): Promise<void> {
       console.error('Usage: aux create <name>');
       process.exit(1);
     }
+    if (!loadCredentials()) {
+      console.error('Guests cannot create rooms. Register first: aux register <username> <password>');
+      process.exit(1);
+    }
     await roomCommand('room:create', { name });
     return;
   }
@@ -53,7 +57,11 @@ async function main(): Promise<void> {
       console.error('Usage: aux join <name>');
       process.exit(1);
     }
-    await roomCommand('room:join', { name });
+    if (loadCredentials()) {
+      await roomCommand('room:join', { name });
+    } else {
+      await guestJoinCommand(name);
+    }
     return;
   }
 
@@ -150,6 +158,55 @@ async function roomCommand(event: 'room:create' | 'room:join', extra: Record<str
     });
 
     ws.on('error', reject);
+  });
+}
+
+async function guestJoinCommand(name: string): Promise<void> {
+  await ensureDaemon();
+  return new Promise((resolve, reject) => {
+    const socket = connect(IPC_PATH);
+    let buf = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(new Error('Timed out waiting for room join response'));
+    }, 10000);
+    function settle(fn: () => void): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      fn();
+    }
+    socket.once('connect', () => {
+      socket.write(JSON.stringify({ event: 'room:join', name }) + '\n');
+    });
+    socket.on('data', (chunk: Buffer) => {
+      buf += chunk.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line) as Record<string, unknown>;
+          if (msg['event'] === 'state:sync') {
+            const room = msg['room'] as Record<string, unknown>;
+            const members = (room['members'] as Array<{ username: string }>)
+              .map((m) => m.username)
+              .join(', ');
+            console.log(`Room: ${room['name'] as string} (members: ${members})`);
+            settle(resolve);
+          } else if (msg['event'] === 'room:error' || msg['event'] === 'auth:error') {
+            const code = msg['code'] as string;
+            console.error(`Error: ${code}`);
+            settle(() => reject(new Error(code)));
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    });
+    socket.on('error', (err) => settle(() => reject(err)));
   });
 }
 

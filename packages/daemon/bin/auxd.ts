@@ -14,6 +14,8 @@ const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
 let currentTrack: TrackProcess | null = null;
 let mpvVolume = 60;
 const tuiClients = new Set<Socket>();
+let isAuthenticated = false;
+let pendingRoomJoin: string | null = null;
 
 function checkDependencies(): void {
   for (const bin of ['yt-dlp', 'mpv']) {
@@ -111,18 +113,47 @@ async function handleIpcMessage(
     wsClient.send({ event: 'queue:skip' });
     return;
   }
+
+  if (msg['event'] === 'room:join') {
+    const name = String(msg['name'] ?? '');
+    if (!name) {
+      replyToSocket(socket, { event: 'room:error', code: 'MISSING_FIELDS' });
+      return;
+    }
+    if (isAuthenticated) {
+      wsClient.send({ event: 'room:join', name });
+    } else {
+      pendingRoomJoin = name;
+    }
+    return;
+  }
 }
 
 const wsClient = createWsClient({
   serverUrl: SERVER_URL,
   onConnected(ws) {
+    isAuthenticated = false;
     const creds = loadCredentials();
     if (creds?.token) {
       ws.send(JSON.stringify({ event: 'auth', action: 'token', token: creds.token }));
+    } else {
+      ws.send(JSON.stringify({ event: 'auth', action: 'guest' }));
     }
   },
   onMessage(msg) {
     broadcast(msg);
+
+    if (msg['event'] === 'auth:ok') {
+      isAuthenticated = true;
+      if (pendingRoomJoin) {
+        wsClient.send({ event: 'room:join', name: pendingRoomJoin });
+        pendingRoomJoin = null;
+      }
+    }
+
+    if (msg['event'] === 'auth:error') {
+      pendingRoomJoin = null;
+    }
 
     if (msg['event'] === 'playback:next') {
       const track = msg['track'];

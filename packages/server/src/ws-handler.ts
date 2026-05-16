@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { WebSocket, type WebSocketServer } from 'ws';
-import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
+import { registerUser, loginUser, signToken, verifyToken, createGuestSession } from './auth.js';
 import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import { addTrack } from './queue.js';
 import { registerVote } from './skip.js';
@@ -11,11 +11,12 @@ export interface IncomingWs extends WebSocket {
   userId?: string;
   username?: string;
   roomId?: string;
+  isGuest?: boolean;
 }
 
 interface AuthMessage {
   event: 'auth';
-  action: 'register' | 'login' | 'token';
+  action: 'register' | 'login' | 'token' | 'guest';
   username?: string;
   password?: string;
   token?: string;
@@ -92,6 +93,13 @@ function handleAuth(
       ws.username = user.username;
       reply(ws, { event: 'auth:ok', username: user.username });
       return;
+    } else if (msg.action === 'guest') {
+      const guest = createGuestSession();
+      ws.userId = guest.id;
+      ws.username = guest.username;
+      ws.isGuest = true;
+      reply(ws, { event: 'auth:ok', username: guest.username });
+      return;
     } else {
       reply(ws, { event: 'auth:error', code: 'UNKNOWN_ACTION' });
       return;
@@ -115,6 +123,10 @@ function handleRoomCreate(
     reply(ws, { event: 'room:error', code: 'UNAUTHENTICATED' });
     return;
   }
+  if (ws.isGuest) {
+    reply(ws, { event: 'room:error', code: 'GUESTS_CANNOT_CREATE_ROOMS' });
+    return;
+  }
   try {
     const room = createRoom(rooms, msg.name, { id: ws.userId, username: ws.username });
     ws.roomId = room.id;
@@ -135,7 +147,7 @@ function handleRoomJoin(
     return;
   }
   try {
-    const room = joinRoom(rooms, msg.name, { id: ws.userId, username: ws.username });
+    const room = joinRoom(rooms, msg.name, { id: ws.userId, username: ws.username, isGuest: ws.isGuest });
     ws.roomId = room.id;
     broadcastToRoom(wss, room, { event: 'state:sync', room });
   } catch (err) {

@@ -1,15 +1,33 @@
 #!/usr/bin/env tsx
+import { execFileSync } from 'node:child_process';
 import { writeFileSync, rmSync } from 'node:fs';
 import type { Socket } from 'node:net';
 import { loadCredentials } from '../src/credentials.js';
 import { createWsClient, type WsClientHandle } from '../src/ws-client.js';
 import { createIpcServer } from '../src/ipc-server.js';
 import { searchYoutube } from '../src/youtube-resolver.js';
+import { computeDelay, spawnTrack, sendMpvCommand, MPV_IPC_PATH, type TrackProcess } from '../src/playback-engine.js';
 
 const PID_FILE = '/tmp/aux.pid';
 const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
 
+let currentTrack: TrackProcess | null = null;
+let mpvVolume = 60;
 const tuiClients = new Set<Socket>();
+
+function checkDependencies(): void {
+  for (const bin of ['yt-dlp', 'mpv']) {
+    try {
+      execFileSync('which', [bin], { stdio: 'ignore' });
+    } catch {
+      console.error(`[auxd] missing dependency: ${bin}`);
+      console.error('  Install yt-dlp: https://github.com/yt-dlp/yt-dlp#installation');
+      console.error('  Install mpv:    https://mpv.io/installation/');
+      process.exit(1);
+    }
+  }
+}
+checkDependencies();
 
 writeFileSync(PID_FILE, String(process.pid));
 process.on('exit', () => rmSync(PID_FILE, { force: true }));
@@ -25,6 +43,23 @@ function broadcast(msg: object): void {
 
 function replyToSocket(socket: Socket, msg: object): void {
   socket.write(JSON.stringify(msg) + '\n');
+}
+
+function startTrack(youtubeUrl: string, startAt: number, ws: WsClientHandle): void {
+  if (currentTrack) {
+    currentTrack.kill();
+    currentTrack = null;
+  }
+  const delay = computeDelay(startAt, Date.now());
+  setTimeout(() => {
+    const proc = spawnTrack(youtubeUrl, MPV_IPC_PATH, mpvVolume);
+    currentTrack = proc;
+    proc.onExit(() => {
+      if (currentTrack !== proc) return;
+      currentTrack = null;
+      ws.send({ event: 'playback:ended' });
+    });
+  }, delay);
 }
 
 async function handleIpcMessage(
@@ -52,13 +87,23 @@ async function handleIpcMessage(
     const title = String(msg['title'] ?? '');
     const artist = String(msg['artist'] ?? '');
     const duration = Number(msg['duration'] ?? 0);
-
     if (!youtubeUrl || !title || !Number.isFinite(duration)) {
       replyToSocket(socket, { event: 'queue:error', code: 'MISSING_FIELDS' });
       return;
     }
-
     wsClient.send({ event: 'queue:add', youtubeUrl, title, artist, duration });
+    return;
+  }
+
+  if (msg['event'] === 'volume:up') {
+    mpvVolume = Math.min(100, mpvVolume + 5);
+    sendMpvCommand(MPV_IPC_PATH, ['set_property', 'volume', mpvVolume]);
+    return;
+  }
+
+  if (msg['event'] === 'volume:down') {
+    mpvVolume = Math.max(0, mpvVolume - 5);
+    sendMpvCommand(MPV_IPC_PATH, ['set_property', 'volume', mpvVolume]);
     return;
   }
 }
@@ -73,6 +118,16 @@ const wsClient = createWsClient({
   },
   onMessage(msg) {
     broadcast(msg);
+
+    if (msg['event'] === 'playback:next') {
+      const track = msg['track'];
+      if (typeof track !== 'object' || track === null) return;
+      const youtubeUrl = String((track as Record<string, unknown>)['youtubeUrl'] ?? '');
+      const startAt = Number(msg['startAt']);
+      if (youtubeUrl && Number.isFinite(startAt)) {
+        startTrack(youtubeUrl, startAt, wsClient);
+      }
+    }
   },
 });
 

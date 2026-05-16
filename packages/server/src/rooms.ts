@@ -20,6 +20,8 @@ export function createRoom(rooms: Map<string, Room>, name: string, host: Member)
     hostId: host.id,
     members: [{ id: host.id, username: host.username }],
     queue: [],
+    nowPlaying: null,
+    playbackStartedAt: null,
     createdAt: Date.now(),
   };
   rooms.set(room.id, room);

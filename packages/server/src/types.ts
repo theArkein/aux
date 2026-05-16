@@ -36,3 +36,15 @@ export interface Room {
   skipVotes: string[];
   createdAt: number;
 }
+
+export interface PresenceState {
+  status: 'online' | 'offline';
+  roomId: string | null;
+}
+
+export interface FriendPresence {
+  id: string;
+  username: string;
+  status: 'online' | 'offline';
+  roomName: string | null;
+}

@@ -106,6 +106,11 @@ async function handleIpcMessage(
     sendMpvCommand(MPV_IPC_PATH, ['set_property', 'volume', mpvVolume]);
     return;
   }
+
+  if (msg['event'] === 'queue:skip') {
+    wsClient.send({ event: 'queue:skip' });
+    return;
+  }
 }
 
 const wsClient = createWsClient({

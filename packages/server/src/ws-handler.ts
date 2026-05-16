@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { WebSocket, type WebSocketServer } from 'ws';
-import { registerUser, loginUser, signToken, verifyToken } from './auth.js';
+import { registerUser, loginUser, signToken, verifyToken, createGuestSession } from './auth.js';
 import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import { addTrack } from './queue.js';
 import { registerVote } from './skip.js';
@@ -11,11 +11,12 @@ export interface IncomingWs extends WebSocket {
   userId?: string;
   username?: string;
   roomId?: string;
+  isGuest?: boolean;
 }
 
 interface AuthMessage {
   event: 'auth';
-  action: 'register' | 'login' | 'token';
+  action: 'register' | 'login' | 'token' | 'guest';
   username?: string;
   password?: string;
   token?: string;
@@ -91,6 +92,13 @@ function handleAuth(
       ws.userId = user.id;
       ws.username = user.username;
       reply(ws, { event: 'auth:ok', username: user.username });
+      return;
+    } else if (msg.action === 'guest') {
+      const guest = createGuestSession();
+      ws.userId = guest.id;
+      ws.username = guest.username;
+      ws.isGuest = true;
+      reply(ws, { event: 'auth:ok', username: guest.username });
       return;
     } else {
       reply(ws, { event: 'auth:error', code: 'UNKNOWN_ACTION' });

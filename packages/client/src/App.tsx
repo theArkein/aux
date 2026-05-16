@@ -5,7 +5,7 @@ import { createIpcClient, type IpcClientHandle } from './ipc-client.js';
 type PanelId = 'nowPlaying' | 'queue' | 'members';
 const PANELS: PanelId[] = ['nowPlaying', 'queue', 'members'];
 
-interface Member { id: string; username: string; }
+interface Member { id: string; username: string; isGuest?: boolean; }
 
 interface Track {
   id: string;
@@ -271,7 +271,11 @@ export default function App(): React.ReactElement {
             </PanelBox>
             <PanelBox title="Members" focused={focused === 'members'}>
               {room && room.members.length > 0
-                ? room.members.map((m) => <Text key={m.id}>{m.username}</Text>)
+                ? room.members.map((m) => (
+                    <Text key={m.id}>
+                      {m.username}{m.isGuest ? <Text dimColor> (guest)</Text> : null}
+                    </Text>
+                  ))
                 : <Text dimColor>No members</Text>}
             </PanelBox>
           </Box>

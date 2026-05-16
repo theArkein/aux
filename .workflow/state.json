@@ -1,0 +1,14 @@
+{
+  "project": "aux",
+  "tracker": "github-issues",
+  "repo": "theArkein/aux",
+  "priority_rules": "ready-for-agent label, dependency order (blocked_by in .issues.json)",
+  "done_signal": "GitHub issue closed + .issues.json state CLOSED",
+  "completed": [1, 2, 3],
+  "current": {
+    "id": 4,
+    "title": "YouTube search + queue a track",
+    "phase": "plan"
+  },
+  "next": "Write implementation plan for issue #4"
+}

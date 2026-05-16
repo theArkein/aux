@@ -85,7 +85,9 @@ export default function App(): React.ReactElement {
           const r = m['room'] as RoomState;
           setRoom(r);
           if (r.nowPlaying && r.playbackStartedAt) {
-            setPlayback({ track: r.nowPlaying, startAt: r.playbackStartedAt });
+            const startAt = r.playbackStartedAt;
+            setPlayback({ track: r.nowPlaying, startAt });
+            setElapsed(Math.max(0, Math.floor((Date.now() - startAt) / 1000)));
           }
         }
 
@@ -94,11 +96,13 @@ export default function App(): React.ReactElement {
         }
 
         if (m['event'] === 'playback:next') {
-          const track = m['track'] as Track;
+          const track = m['track'];
           const startAt = Number(m['startAt']);
-          setPlayback({ track, startAt });
+          if (!track || typeof track !== 'object' || !Number.isFinite(startAt)) return;
+          const typedTrack = track as Track;
+          setPlayback({ track: typedTrack, startAt });
           setElapsed(0);
-          setRoom((prev) => prev ? { ...prev, nowPlaying: track } : prev);
+          setRoom((prev) => prev ? { ...prev, nowPlaying: typedTrack } : prev);
         }
 
         if (m['event'] === 'search:results' && Array.isArray(m['results'])) {

@@ -13,11 +13,28 @@ function wsConnect(port: number): WebSocket {
   return new WebSocket(`ws://localhost:${port}`);
 }
 
-function nextMsg(ws: WebSocket): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    ws.once('message', (raw) => resolve(JSON.parse(raw.toString()) as Record<string, unknown>));
-    ws.once('error', reject);
+interface MsgQueue {
+  next(): Promise<Record<string, unknown>>;
+}
+
+function makeQueue(ws: WebSocket): MsgQueue {
+  const buf: Record<string, unknown>[] = [];
+  const waiters: Array<(m: Record<string, unknown>) => void> = [];
+  ws.on('message', (raw) => {
+    const m = JSON.parse(raw.toString()) as Record<string, unknown>;
+    const waiter = waiters.shift();
+    if (waiter) waiter(m);
+    else buf.push(m);
   });
+  return {
+    next(): Promise<Record<string, unknown>> {
+      return new Promise((resolve) => {
+        const m = buf.shift();
+        if (m) resolve(m);
+        else waiters.push(resolve);
+      });
+    },
+  };
 }
 
 function closeWs(ws: WebSocket): Promise<void> {
@@ -28,13 +45,14 @@ function closeWs(ws: WebSocket): Promise<void> {
   });
 }
 
-async function openAndAuth(port: number, username: string, password: string): Promise<WebSocket> {
+async function openAndAuth(port: number, username: string, password: string): Promise<{ ws: WebSocket; q: MsgQueue }> {
   const ws = wsConnect(port);
+  const q = makeQueue(ws);
   await new Promise<void>((res, rej) => { ws.once('open', res); ws.once('error', rej); });
   ws.send(JSON.stringify({ event: 'auth', action: 'login', username, password }));
-  const authMsg = await nextMsg(ws);
+  const authMsg = await q.next();
   assert.equal(authMsg['event'], 'auth:ok');
-  return ws;
+  return { ws, q };
 }
 
 before(async () => {
@@ -48,10 +66,10 @@ after(async () => {
 });
 
 test('queue:add appends track and broadcasts queue:update', async () => {
-  const alice = await openAndAuth(PORT, 'alice', 'pass123');
+  const { ws: alice, q } = await openAndAuth(PORT, 'alice', 'pass123');
   try {
     alice.send(JSON.stringify({ event: 'room:create', name: 'qtest1' }));
-    const syncMsg = await nextMsg(alice);
+    const syncMsg = await q.next();
     assert.equal(syncMsg['event'], 'state:sync');
 
     alice.send(JSON.stringify({
@@ -62,7 +80,7 @@ test('queue:add appends track and broadcasts queue:update', async () => {
       duration: 224,
     }));
 
-    const msg = await nextMsg(alice);
+    const msg = await q.next();
     assert.equal(msg['event'], 'queue:update');
     const queue = msg['queue'] as Array<Record<string, unknown>>;
     assert.equal(queue.length, 1);
@@ -75,17 +93,14 @@ test('queue:add appends track and broadcasts queue:update', async () => {
 });
 
 test('queue:add broadcasts to all room members', async () => {
-  const alice = await openAndAuth(PORT, 'alice', 'pass123');
-  const bob = await openAndAuth(PORT, 'bob', 'pass456');
+  const { ws: alice, q: aliceQ } = await openAndAuth(PORT, 'alice', 'pass123');
+  const { ws: bob, q: bobQ } = await openAndAuth(PORT, 'bob', 'pass456');
   try {
     alice.send(JSON.stringify({ event: 'room:create', name: 'qtest2' }));
-    await nextMsg(alice); // alice state:sync
+    await aliceQ.next(); // alice state:sync
 
-    // Set up alice's next-message listener BEFORE bob joins, to avoid race
-    const aliceJoinP = nextMsg(alice);
-    const bobJoinP = nextMsg(bob);
     bob.send(JSON.stringify({ event: 'room:join', name: 'qtest2' }));
-    await Promise.all([aliceJoinP, bobJoinP]); // both get state:sync
+    await Promise.all([aliceQ.next(), bobQ.next()]); // both get state:sync
 
     alice.send(JSON.stringify({
       event: 'queue:add',
@@ -95,7 +110,7 @@ test('queue:add broadcasts to all room members', async () => {
       duration: 248,
     }));
 
-    const [aliceMsg, bobMsg] = await Promise.all([nextMsg(alice), nextMsg(bob)]);
+    const [aliceMsg, bobMsg] = await Promise.all([aliceQ.next(), bobQ.next()]);
     assert.equal(aliceMsg['event'], 'queue:update');
     assert.equal(bobMsg['event'], 'queue:update');
     const aliceQueue = aliceMsg['queue'] as Array<Record<string, unknown>>;
@@ -108,7 +123,7 @@ test('queue:add broadcasts to all room members', async () => {
 });
 
 test('queue:add returns queue:error NOT_IN_ROOM if not in room', async () => {
-  const ws = await openAndAuth(PORT, 'alice', 'pass123');
+  const { ws, q } = await openAndAuth(PORT, 'alice', 'pass123');
   try {
     ws.send(JSON.stringify({
       event: 'queue:add',
@@ -118,7 +133,7 @@ test('queue:add returns queue:error NOT_IN_ROOM if not in room', async () => {
       duration: 100,
     }));
 
-    const msg = await nextMsg(ws);
+    const msg = await q.next();
     assert.equal(msg['event'], 'queue:error');
     assert.equal(msg['code'], 'NOT_IN_ROOM');
   } finally {
@@ -127,13 +142,13 @@ test('queue:add returns queue:error NOT_IN_ROOM if not in room', async () => {
 });
 
 test('queue:add returns queue:error MISSING_FIELDS for invalid payload', async () => {
-  const alice = await openAndAuth(PORT, 'alice', 'pass123');
+  const { ws: alice, q } = await openAndAuth(PORT, 'alice', 'pass123');
   try {
     alice.send(JSON.stringify({ event: 'room:create', name: 'qtest3' }));
-    await nextMsg(alice); // state:sync
+    await q.next(); // state:sync
 
     alice.send(JSON.stringify({ event: 'queue:add', youtubeUrl: '', title: 'A', artist: 'X', duration: 100 }));
-    const msg = await nextMsg(alice);
+    const msg = await q.next();
     assert.equal(msg['event'], 'queue:error');
     assert.equal(msg['code'], 'MISSING_FIELDS');
   } finally {
@@ -142,10 +157,10 @@ test('queue:add returns queue:error MISSING_FIELDS for invalid payload', async (
 });
 
 test('queue accumulates multiple tracks in order', async () => {
-  const alice = await openAndAuth(PORT, 'alice', 'pass123');
+  const { ws: alice, q } = await openAndAuth(PORT, 'alice', 'pass123');
   try {
     alice.send(JSON.stringify({ event: 'room:create', name: 'qtest4' }));
-    await nextMsg(alice); // state:sync
+    await q.next(); // state:sync
 
     const tracks = [
       { youtubeUrl: 'https://youtube.com/watch?v=1', title: 'Track One', artist: 'A', duration: 100 },
@@ -153,17 +168,24 @@ test('queue accumulates multiple tracks in order', async () => {
       { youtubeUrl: 'https://youtube.com/watch?v=3', title: 'Track Three', artist: 'C', duration: 300 },
     ];
 
-    for (const t of tracks) {
+    // First track triggers both queue:update and playback:next
+    alice.send(JSON.stringify({ event: 'queue:add', ...tracks[0] }));
+    await q.next(); // queue:update
+    await q.next(); // playback:next (first track starts playback)
+
+    // Remaining tracks only trigger queue:update (playback already running)
+    for (const t of tracks.slice(1)) {
       alice.send(JSON.stringify({ event: 'queue:add', ...t }));
-      await nextMsg(alice); // queue:update
+      await q.next(); // queue:update
     }
 
     alice.send(JSON.stringify({ event: 'queue:add', youtubeUrl: 'https://youtube.com/watch?v=4', title: 'Track Four', artist: 'D', duration: 400 }));
-    const last = await nextMsg(alice);
+    const last = await q.next();
     const queue = last['queue'] as Array<Record<string, unknown>>;
-    assert.equal(queue.length, 4);
-    assert.equal(queue[0]!['title'], 'Track One');
-    assert.equal(queue[3]!['title'], 'Track Four');
+    // Track One is nowPlaying (shifted from queue), so queue contains tracks 2-4
+    assert.equal(queue.length, 3);
+    assert.equal(queue[0]!['title'], 'Track Two');
+    assert.equal(queue[2]!['title'], 'Track Four');
   } finally {
     await closeWs(alice);
   }

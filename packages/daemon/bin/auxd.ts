@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+import { execFileSync } from 'node:child_process';
 import { writeFileSync, rmSync } from 'node:fs';
 import type { Socket } from 'node:net';
 import { loadCredentials } from '../src/credentials.js';
@@ -13,6 +14,20 @@ const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
 let currentTrack: TrackProcess | null = null;
 let mpvVolume = 60;
 const tuiClients = new Set<Socket>();
+
+function checkDependencies(): void {
+  for (const bin of ['yt-dlp', 'mpv']) {
+    try {
+      execFileSync('which', [bin], { stdio: 'ignore' });
+    } catch {
+      console.error(`[auxd] missing dependency: ${bin}`);
+      console.error('  Install yt-dlp: https://github.com/yt-dlp/yt-dlp#installation');
+      console.error('  Install mpv:    https://mpv.io/installation/');
+      process.exit(1);
+    }
+  }
+}
+checkDependencies();
 
 writeFileSync(PID_FILE, String(process.pid));
 process.on('exit', () => rmSync(PID_FILE, { force: true }));
@@ -37,10 +52,10 @@ function startTrack(youtubeUrl: string, startAt: number, ws: WsClientHandle): vo
   }
   const delay = computeDelay(startAt, Date.now());
   setTimeout(() => {
-    const proc = spawnTrack(youtubeUrl);
+    const proc = spawnTrack(youtubeUrl, MPV_IPC_PATH, mpvVolume);
     currentTrack = proc;
-    setTimeout(() => sendMpvCommand(MPV_IPC_PATH, ['set_property', 'volume', mpvVolume]), 500);
     proc.onExit(() => {
+      if (currentTrack !== proc) return;
       currentTrack = null;
       ws.send({ event: 'playback:ended' });
     });
@@ -105,8 +120,9 @@ const wsClient = createWsClient({
     broadcast(msg);
 
     if (msg['event'] === 'playback:next') {
-      const track = msg['track'] as Record<string, unknown>;
-      const youtubeUrl = String(track['youtubeUrl'] ?? '');
+      const track = msg['track'];
+      if (typeof track !== 'object' || track === null) return;
+      const youtubeUrl = String((track as Record<string, unknown>)['youtubeUrl'] ?? '');
       const startAt = Number(msg['startAt']);
       if (youtubeUrl && Number.isFinite(startAt)) {
         startTrack(youtubeUrl, startAt, wsClient);

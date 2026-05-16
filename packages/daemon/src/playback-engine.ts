@@ -12,11 +12,11 @@ export interface TrackProcess {
   onExit(cb: () => void): void;
 }
 
-export function spawnTrack(youtubeUrl: string, ipcPath = MPV_IPC_PATH): TrackProcess {
+export function spawnTrack(youtubeUrl: string, ipcPath = MPV_IPC_PATH, volume = 60): TrackProcess {
   const ytdlp = spawn('yt-dlp', ['-f', 'bestaudio', '-q', '-o', '-', youtubeUrl], {
     stdio: ['ignore', 'pipe', 'ignore'],
   });
-  const mpv = spawn('mpv', ['--no-terminal', '--idle=no', `--input-ipc-server=${ipcPath}`, '-'], {
+  const mpv = spawn('mpv', ['--no-terminal', '--idle=no', `--input-ipc-server=${ipcPath}`, `--volume=${volume}`, '-'], {
     stdio: [ytdlp.stdout, 'ignore', 'ignore'],
   });
   ytdlp.on('error', (err) => console.error('[daemon] yt-dlp error:', err.message));

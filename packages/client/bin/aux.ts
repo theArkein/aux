@@ -1,10 +1,19 @@
 #!/usr/bin/env tsx
 import { WebSocket } from 'ws';
 import { readFileSync, existsSync } from 'node:fs';
+import { connect } from 'node:net';
+import { spawn } from 'node:child_process';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { saveCredentials, loadCredentials } from '../src/credentials.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const PID_FILE = '/tmp/aux.pid';
+const IPC_PATH = '/tmp/aux.sock';
 const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const DAEMON_BIN = resolve(__dirname, '../../daemon/bin/auxd.ts');
 
 const [,, command, ...args] = process.argv;
 
@@ -60,9 +69,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.error(`Unknown command: ${command ?? '(none)'}`);
-  console.error('Available commands: register, login, create, join, quit');
-  process.exit(1);
+  if (command !== undefined) {
+    console.error(`Unknown command: ${command}`);
+    console.error('Available commands: register, login, create, join, quit');
+    process.exit(1);
+  }
+
+  // No command: start daemon if needed, attach TUI
+  await ensureDaemon();
+  const { render } = await import('ink');
+  const { createElement } = await import('react');
+  const { default: App } = await import('../src/App.js');
+  const { waitUntilExit } = render(createElement(App));
+  await waitUntilExit();
 }
 
 async function authCommand(action: 'register' | 'login', username: string, password: string): Promise<void> {
@@ -133,6 +152,43 @@ async function roomCommand(event: 'room:create' | 'room:join', extra: Record<str
 
     ws.on('error', reject);
   });
+}
+
+function isDaemonRunning(): boolean {
+  if (!existsSync(PID_FILE)) return false;
+  try {
+    const pid = Number(readFileSync(PID_FILE, 'utf8').trim());
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureDaemon(): Promise<void> {
+  if (!isDaemonRunning()) {
+    const child = spawn('npx', ['tsx', DAEMON_BIN], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env },
+    });
+    child.unref();
+  }
+  await waitForSocket(IPC_PATH, 5000);
+}
+
+async function waitForSocket(path: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const available = await new Promise<boolean>((resolve) => {
+      const s = connect(path);
+      s.once('connect', () => { s.destroy(); resolve(true); });
+      s.once('error', () => resolve(false));
+    });
+    if (available) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error('Daemon not ready after 5s — check AUX_SERVER_URL and try again');
 }
 
 main().catch((err: Error) => {

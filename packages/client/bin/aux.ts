@@ -166,6 +166,20 @@ async function guestJoinCommand(name: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = connect(IPC_PATH);
     let buf = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(new Error('Timed out waiting for room join response'));
+    }, 10000);
+    function settle(fn: () => void): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      fn();
+    }
     socket.once('connect', () => {
       socket.write(JSON.stringify({ event: 'room:join', name }) + '\n');
     });
@@ -183,17 +197,16 @@ async function guestJoinCommand(name: string): Promise<void> {
               .map((m) => m.username)
               .join(', ');
             console.log(`Room: ${room['name'] as string} (members: ${members})`);
-            socket.destroy();
-            resolve();
+            settle(resolve);
           } else if (msg['event'] === 'room:error' || msg['event'] === 'auth:error') {
-            console.error(`Error: ${msg['code'] as string}`);
-            socket.destroy();
-            reject(new Error(msg['code'] as string));
+            const code = msg['code'] as string;
+            console.error(`Error: ${code}`);
+            settle(() => reject(new Error(code)));
           }
         } catch { /* ignore parse errors */ }
       }
     });
-    socket.on('error', reject);
+    socket.on('error', (err) => settle(() => reject(err)));
   });
 }
 

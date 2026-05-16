@@ -26,7 +26,7 @@
   {
     "number": 4,
     "title": "YouTube search + queue a track",
-    "state": "OPEN",
+    "state": "CLOSED",
     "labels": ["ready-for-agent"],
     "blocked_by": [2, 3],
     "url": "https://github.com/theArkein/aux/issues/4"

@@ -130,3 +130,114 @@ test('auth:guest returns auth:ok with guest_ username and no token', async () =>
     await closeWs(ws);
   }
 });
+
+test('guest can queue:add a track', async () => {
+  const { ws: alice, q: qa } = await openAndAuthUser('alice', 'passw');
+  const { ws: guest, q: qg } = await authenticateAsGuest();
+  try {
+    alice.send(JSON.stringify({ event: 'room:create', name: 'guestq1' }));
+    await qa.next(); // alice: state:sync
+
+    const ap = qa.next();
+    const gp = qg.next();
+    guest.send(JSON.stringify({ event: 'room:join', name: 'guestq1' }));
+    await Promise.all([ap, gp]); // both receive state:sync
+
+    // Guest queues a track
+    const aliceUpdateP = qa.next();
+    const guestUpdateP = qg.next();
+    guest.send(JSON.stringify({
+      event: 'queue:add',
+      youtubeUrl: 'https://youtube.com/watch?v=gst1',
+      title: 'GuestTrack',
+      artist: 'G',
+      duration: 100,
+    }));
+    const [aliceUpdate] = await Promise.all([aliceUpdateP, guestUpdateP]);
+    assert.equal(aliceUpdate['event'], 'queue:update');
+    const queue = aliceUpdate['queue'] as Array<{ title: string }>;
+    assert.equal(queue[0]!.title, 'GuestTrack');
+  } finally {
+    await closeWs(alice);
+    await closeWs(guest);
+  }
+});
+
+test('guest vote-skip is registered', async () => {
+  const { ws: alice, q: qa } = await openAndAuthUser('alice', 'passw');
+  const { ws: guest, q: qg } = await authenticateAsGuest();
+  try {
+    alice.send(JSON.stringify({ event: 'room:create', name: 'guestvote1' }));
+    await qa.next(); // state:sync
+
+    const ap = qa.next();
+    const gp = qg.next();
+    guest.send(JSON.stringify({ event: 'room:join', name: 'guestvote1' }));
+    await Promise.all([ap, gp]);
+
+    // Alice queues → starts playback (both clients receive queue:update + playback:next)
+    alice.send(JSON.stringify({
+      event: 'queue:add',
+      youtubeUrl: 'https://youtube.com/watch?v=vote',
+      title: 'VoteTrack',
+      artist: 'A',
+      duration: 100,
+    }));
+    await qa.next(); await qa.next(); // queue:update + playback:next for alice
+    await qg.next(); await qg.next(); // same for guest
+
+    // Guest votes to skip (guest is not host; alice created the room → alice is host)
+    const syncForAliceP = qa.next();
+    const syncForGuestP = qg.next();
+    guest.send(JSON.stringify({ event: 'queue:skip' }));
+    const [syncForAlice] = await Promise.all([syncForAliceP, syncForGuestP]);
+
+    assert.equal(syncForAlice['event'], 'state:sync');
+    const room = syncForAlice['room'] as Record<string, unknown>;
+    assert.equal((room['skipVotes'] as string[]).length, 1);
+  } finally {
+    await closeWs(alice);
+    await closeWs(guest);
+  }
+});
+
+test('guest disconnect clears them from the room', async () => {
+  const { ws: alice, q: qa } = await openAndAuthUser('alice', 'passw');
+  const { ws: guest, q: qg } = await authenticateAsGuest();
+  try {
+    alice.send(JSON.stringify({ event: 'room:create', name: 'guestdisco1' }));
+    await qa.next(); // state:sync (alice only)
+
+    const ap = qa.next();
+    const gp = qg.next();
+    guest.send(JSON.stringify({ event: 'room:join', name: 'guestdisco1' }));
+    await Promise.all([ap, gp]); // both receive state:sync
+
+    // Guest disconnects — alice should receive state:sync with only herself
+    const aliceUpdateP = qa.next();
+    await closeWs(guest);
+    const aliceUpdate = await aliceUpdateP;
+
+    assert.equal(aliceUpdate['event'], 'state:sync');
+    const room = aliceUpdate['room'] as Record<string, unknown>;
+    const members = room['members'] as Array<{ username: string }>;
+    assert.equal(members.length, 1);
+    assert.equal(members[0]!.username, 'alice');
+  } finally {
+    await closeWs(alice);
+  }
+});
+
+test('two guests get independent guest_ usernames', async () => {
+  const { ws: g1, username: u1 } = await authenticateAsGuest();
+  const { ws: g2, username: u2 } = await authenticateAsGuest();
+  try {
+    assert.match(u1, /^guest_[0-9a-f]{4}$/);
+    assert.match(u2, /^guest_[0-9a-f]{4}$/);
+    // Collision is 1-in-65536; we just verify both are valid guest usernames
+    assert.ok(typeof u1 === 'string' && typeof u2 === 'string');
+  } finally {
+    await closeWs(g1);
+    await closeWs(g2);
+  }
+});

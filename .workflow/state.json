@@ -1,14 +1,17 @@
 {
-  "project": "aux",
   "tracker": "github-issues",
   "repo": "theArkein/aux",
-  "priority_rules": "ready-for-agent label, dependency order (blocked_by in .issues.json)",
-  "done_signal": "GitHub issue closed + .issues.json state CLOSED",
-  "completed": [1, 2, 3],
+  "priorityRules": "lowest open issue number that is unblocked",
+  "doneSignal": "GitHub issue closed",
+  "completed": [
+    { "id": 5, "title": "Audio playback + sync engine", "pr": 15 },
+    { "id": 6, "title": "Skip + vote-skip", "pr": 16 }
+  ],
   "current": {
-    "id": 4,
-    "title": "YouTube search + queue a track",
-    "phase": "plan"
-  },
-  "next": "Write implementation plan for issue #4"
+    "id": 7,
+    "title": "Guest mode",
+    "phase": "implement",
+    "branch": "feature/issue-7-guest-mode",
+    "plan": "docs/superpowers/plans/2026-05-16-guest-mode.md"
+  }
 }

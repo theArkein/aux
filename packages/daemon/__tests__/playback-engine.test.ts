@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:net';
+import { rmSync } from 'node:fs';
 import { computeDelay, sendMpvCommand } from '../src/playback-engine.js';
 
 test('computeDelay returns positive ms when startAt is in the future', () => {
@@ -21,6 +22,7 @@ test('computeDelay handles large future gaps', () => {
 
 test('sendMpvCommand writes JSON command to the socket', async () => {
   const socketPath = '/tmp/auxmpv-test.sock';
+  rmSync(socketPath, { force: true });
   let received = '';
 
   const server: Server = await new Promise((resolve) => {
@@ -30,10 +32,12 @@ test('sendMpvCommand writes JSON command to the socket', async () => {
     s.listen(socketPath, () => resolve(s));
   });
 
-  sendMpvCommand(socketPath, ['set_property', 'volume', 50]);
-
-  await new Promise<void>((resolve) => setTimeout(resolve, 100));
-
-  server.close();
-  assert.equal(received.trim(), JSON.stringify({ command: ['set_property', 'volume', 50] }));
+  try {
+    sendMpvCommand(socketPath, ['set_property', 'volume', 50]);
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    assert.equal(received.trim(), JSON.stringify({ command: ['set_property', 'volume', 50] }));
+  } finally {
+    await new Promise<void>((resolve) => { server.close(() => resolve()); });
+    rmSync(socketPath, { force: true });
+  }
 });

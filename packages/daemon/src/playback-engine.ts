@@ -13,18 +13,21 @@ export interface TrackProcess {
 }
 
 export function spawnTrack(youtubeUrl: string, ipcPath = MPV_IPC_PATH): TrackProcess {
-  const proc = spawn(
-    'sh',
-    ['-c', `yt-dlp -f bestaudio -q -o - '${youtubeUrl}' | mpv --no-terminal --idle=no --input-ipc-server=${ipcPath} -`],
-    { stdio: 'ignore' }
-  );
+  const ytdlp = spawn('yt-dlp', ['-f', 'bestaudio', '-q', '-o', '-', youtubeUrl], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const mpv = spawn('mpv', ['--no-terminal', '--idle=no', `--input-ipc-server=${ipcPath}`, '-'], {
+    stdio: [ytdlp.stdout, 'ignore', 'ignore'],
+  });
+  ytdlp.on('error', (err) => console.error('[daemon] yt-dlp error:', err.message));
+  mpv.on('error', (err) => console.error('[daemon] mpv error:', err.message));
   return {
-    kill() { proc.kill('SIGTERM'); },
-    onExit(cb) { proc.on('exit', cb); },
+    kill() { ytdlp.kill('SIGTERM'); mpv.kill('SIGTERM'); },
+    onExit(cb) { mpv.on('exit', cb); },
   };
 }
 
-export function sendMpvCommand(ipcPath: string, command: unknown[]): void {
+export function sendMpvCommand(ipcPath: string, command: (string | number | boolean)[]): void {
   const sock = createConnection(ipcPath);
   sock.on('connect', () => {
     sock.write(JSON.stringify({ command }) + '\n');

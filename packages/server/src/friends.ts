@@ -31,3 +31,9 @@ export function getFriends(db: Database.Database, userId: string): User[] {
     )
     .all(userId) as User[];
 }
+
+export function getFollowers(db: Database.Database, userId: string): { user_id: string }[] {
+  return db
+    .prepare('SELECT user_id FROM friendships WHERE friend_id = ?')
+    .all(userId) as { user_id: string }[];
+}

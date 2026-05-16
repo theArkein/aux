@@ -5,7 +5,7 @@ import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import { addTrack } from './queue.js';
 import { registerVote } from './skip.js';
 import { startPlayback, endPlayback } from './playback.js';
-import { addFriend, getFriends } from './friends.js';
+import { addFriend, getFriends, getFollowers } from './friends.js';
 import type { User, Room, PresenceState, FriendPresence } from './types.js';
 
 export interface IncomingWs extends WebSocket {
@@ -86,9 +86,7 @@ function broadcastFriendsListToWatchers(
   presence: Map<string, PresenceState>,
   rooms: Map<string, Room>
 ): void {
-  const watchers = db
-    .prepare('SELECT user_id FROM friendships WHERE friend_id = ?')
-    .all(userId) as { user_id: string }[];
+  const watchers = getFollowers(db, userId);
   const watcherIds = new Set(watchers.map((w) => w.user_id));
   for (const client of wss.clients) {
     const c = client as IncomingWs;
@@ -357,6 +355,7 @@ export function handleDisconnect(
   if (ws.userId) {
     presence.set(ws.userId, { status: 'offline', roomId: null });
     broadcastFriendsListToWatchers(db, wss, ws.userId, presence, rooms);
+    if (ws.isGuest) presence.delete(ws.userId);
   }
 }
 

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { initDb, closeDb } from './db.js';
 import { handleMessage, handleDisconnect, type IncomingWs } from './ws-handler.js';
-import type { Room } from './types.js';
+import type { Room, PresenceState } from './types.js';
 import type Database from 'better-sqlite3';
 import type { Server } from 'node:http';
 
@@ -18,6 +18,7 @@ export interface ServerHandle {
   wss: WebSocketServer;
   db: Database.Database;
   rooms: Map<string, Room>;
+  presence: Map<string, PresenceState>;
 }
 
 export async function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
@@ -29,22 +30,23 @@ export async function startServer(opts: ServerOptions = {}): Promise<ServerHandl
 
   const db = initDb(dbPath);
   const rooms = new Map<string, Room>();
+  const presence = new Map<string, PresenceState>();
   const httpServer = createServer();
   const wss = new WebSocketServer({ server: httpServer });
 
   wss.on('connection', (ws) => {
     const typedWs = ws as IncomingWs;
     typedWs.on('message', (raw) =>
-      handleMessage(db, jwtSecret, typedWs, raw.toString(), rooms, wss)
+      handleMessage(db, jwtSecret, typedWs, raw.toString(), rooms, wss, presence)
     );
     typedWs.on('error', (err) => console.error('ws error:', err.message));
-    typedWs.on('close', () => handleDisconnect(rooms, wss, typedWs));
+    typedWs.on('close', () => handleDisconnect(db, rooms, wss, typedWs, presence));
   });
 
   await new Promise<void>((resolve) => httpServer.listen(port, resolve));
   console.log(`aux-server listening on :${port}`);
 
-  return { httpServer, wss, db, rooms };
+  return { httpServer, wss, db, rooms, presence };
 }
 
 export async function stopServer({ httpServer, wss, db }: ServerHandle): Promise<void> {

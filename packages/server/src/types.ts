@@ -32,5 +32,6 @@ export interface Room {
   queue: Track[];
   nowPlaying: Track | null;
   playbackStartedAt: number | null;
+  skipVotes: string[];
   createdAt: number;
 }

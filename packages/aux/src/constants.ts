@@ -14,7 +14,7 @@ export const YT_DLP_URL: Record<NodeJS.Platform, string | null> = {
   darwin: `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp_macos`,
   linux: `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp`,
   win32: `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp.exe`,
-  aix: null, freebsd: null, openbsd: null, sunos: null, netbsd: null, cygwin: null, android: null,
+  aix: null, freebsd: null, openbsd: null, sunos: null, netbsd: null, cygwin: null, android: null, haiku: null,
 };
 
 export const MPV_WINDOWS_ZIP_URL =

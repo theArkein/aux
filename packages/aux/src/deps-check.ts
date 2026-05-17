@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, createWriteStream, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, chmodSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import https from 'node:https';
@@ -21,23 +21,28 @@ function isInAuxBin(name: string): boolean {
 
 async function downloadFile(url: string, dest: string): Promise<void> {
   mkdirSync(AUX_BIN_DIR, { recursive: true });
-  await new Promise<void>((resolve, reject) => {
-    function get(u: string): void {
-      https.get(u, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          get(res.headers.location!);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`Download failed: HTTP ${res.statusCode} for ${u}`));
-          return;
-        }
-        const out = createWriteStream(dest);
-        pipeline(res, out).then(resolve).catch(reject);
-      }).on('error', reject);
-    }
-    get(url);
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      function get(u: string): void {
+        https.get(u, (res) => {
+          if (res.statusCode === 301 || res.statusCode === 302) {
+            get(res.headers.location!);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`Download failed: HTTP ${res.statusCode} for ${u}`));
+            return;
+          }
+          const out = createWriteStream(dest);
+          pipeline(res, out).then(resolve).catch(reject);
+        }).on('error', reject);
+      }
+      get(url);
+    });
+  } catch (err) {
+    try { rmSync(dest, { force: true }); } catch { /* ignore cleanup errors */ }
+    throw err;
+  }
 }
 
 async function ensureYtDlp(): Promise<void> {
@@ -100,5 +105,6 @@ export async function depsCheck(): Promise<void> {
   await ensureMpv();
 
   // Prepend ~/.aux/bin to PATH so spawned subprocesses find the downloaded binaries
-  process.env['PATH'] = `${AUX_BIN_DIR}:${process.env['PATH'] ?? ''}`;
+  const pathSep = process.platform === 'win32' ? ';' : ':';
+  process.env['PATH'] = `${AUX_BIN_DIR}${pathSep}${process.env['PATH'] ?? ''}`;
 }

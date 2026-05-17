@@ -171,6 +171,14 @@ async function handleIpcMessage(
       return;
     }
     const clientId = process.env['SPOTIFY_CLIENT_ID'] ?? '';
+    if (!clientId) {
+      replyToSocket(socket, {
+        event: 'spotify:error',
+        code: 'SPOTIFY_CLIENT_ID_NOT_SET',
+        message: 'Set SPOTIFY_CLIENT_ID env var. Create an app at https://developer.spotify.com/dashboard',
+      });
+      return;
+    }
     const token = await getValidToken(clientId);
     if (!token) {
       replyToSocket(socket, { event: 'spotify:error', code: 'NOT_AUTHENTICATED' });

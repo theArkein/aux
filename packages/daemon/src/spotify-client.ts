@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 
 // ─── Exported types ───────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ export function loadToken(path: string = DEFAULT_TOKEN_PATH): SpotifyToken | nul
     if (
       typeof parsed.access_token !== 'string' ||
       typeof parsed.refresh_token !== 'string' ||
-      typeof parsed.expires_at !== 'number'
+      !Number.isFinite(parsed.expires_at)
     ) {
       return null;
     }
@@ -256,7 +256,7 @@ export async function startOAuthFlow(opts: OAuthFlowOptions): Promise<SpotifyTok
 
   // Open browser
   const openCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-  exec(`${openCmd} "${authUrl}"`);
+  execFile(openCmd, [authUrl]);
 
   // Wait for the OAuth callback
   const token = await new Promise<SpotifyToken>((resolve, reject) => {
@@ -345,9 +345,7 @@ export async function startOAuthFlow(opts: OAuthFlowOptions): Promise<SpotifyTok
       }
     });
 
-    server.listen(8888, 'localhost', () => {
-      // Server is ready to receive callback
-    });
+    server.listen(8888, 'localhost');
 
     server.on('error', reject);
   });

@@ -149,7 +149,9 @@ export default function App(): React.ReactElement {
 
         if (m['event'] === 'spotify:auth:url') {
           setSpotifyAuthUrl(String(m['url'] ?? ''));
-          setMode('spotify-loading');
+          setMode((prev) =>
+            prev === 'spotify-loading' || prev === 'normal' ? 'spotify-loading' : prev
+          );
         }
 
         if (m['event'] === 'spotify:auth:ok') {
@@ -179,6 +181,7 @@ export default function App(): React.ReactElement {
 
         if (m['event'] === 'spotify:error') {
           setMode('normal');
+          setSpotifyProgress(null);
           setStatusMsg(String(m['message'] ?? m['code'] ?? 'Spotify error'));
         }
       },
@@ -294,6 +297,7 @@ export default function App(): React.ReactElement {
         }
         return;
       }
+      return;
     }
 
     if (mode === 'spotify-loading' || mode === 'spotify-importing') {

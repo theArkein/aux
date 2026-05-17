@@ -76,9 +76,19 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === 'friend') {
+    const [subcommand, username] = args;
+    if (subcommand !== 'add' || !username) {
+      console.error('Usage: aux friend add <username>');
+      process.exit(1);
+    }
+    await friendAddCommand(username);
+    return;
+  }
+
   if (command !== undefined) {
     console.error(`Unknown command: ${command}`);
-    console.error('Available commands: register, login, create, join, quit');
+    console.error('Available commands: register, login, create, join, quit, friend');
     process.exit(1);
   }
 
@@ -207,6 +217,57 @@ async function guestJoinCommand(name: string): Promise<void> {
       }
     });
     socket.on('error', (err) => settle(() => reject(err)));
+  });
+}
+
+async function friendAddCommand(username: string): Promise<void> {
+  const creds = loadCredentials();
+  if (!creds) {
+    console.error('Not logged in. Run: aux login <username> <password>');
+    process.exit(1);
+  }
+
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(SERVER_URL);
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ event: 'auth', action: 'token', token: creds.token }));
+    });
+
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as Record<string, unknown>;
+
+      if (msg['event'] === 'auth:ok') {
+        ws.send(JSON.stringify({ event: 'friend:add', username }));
+        return;
+      }
+
+      if (msg['event'] === 'friends:list') {
+        const friends = msg['friends'] as Array<{
+          username: string;
+          status: string;
+          roomName: string | null;
+        }>;
+        const friend = friends.find((f) => f.username === username);
+        if (friend?.status === 'online') {
+          const room = friend.roomName ? ` in room: ${friend.roomName}` : '';
+          console.log(`Added ${username} as a friend. They are online${room}.`);
+        } else {
+          console.log(`Added ${username} as a friend.`);
+        }
+        ws.close();
+        resolve();
+        return;
+      }
+
+      if (msg['event'] === 'friend:error' || msg['event'] === 'auth:error') {
+        console.error(`Error: ${msg['code'] as string}`);
+        ws.close();
+        reject(new Error(msg['code'] as string));
+      }
+    });
+
+    ws.on('error', reject);
   });
 }
 

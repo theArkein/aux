@@ -5,7 +5,8 @@ import { createRoom, joinRoom, leaveRoom } from './rooms.js';
 import { addTrack } from './queue.js';
 import { registerVote } from './skip.js';
 import { startPlayback, endPlayback } from './playback.js';
-import type { User, Room } from './types.js';
+import { addFriend, getFriends, getFollowers } from './friends.js';
+import type { User, Room, PresenceState, FriendPresence } from './types.js';
 
 export interface IncomingWs extends WebSocket {
   userId?: string;
@@ -58,6 +59,42 @@ function broadcastToRoom(wss: WebSocketServer, room: Room, data: object): void {
     const c = client as IncomingWs;
     if (c.userId && memberIds.has(c.userId) && c.readyState === WebSocket.OPEN) {
       c.send(JSON.stringify(data));
+    }
+  }
+}
+
+function buildFriendList(
+  db: Database.Database,
+  userId: string,
+  presence: Map<string, PresenceState>,
+  rooms: Map<string, Room>
+): FriendPresence[] {
+  const friends = getFriends(db, userId);
+  return friends.map((f) => {
+    const p = presence.get(f.id);
+    const status = p?.status ?? 'offline';
+    const roomId = p?.roomId ?? null;
+    const room = roomId ? rooms.get(roomId) : null;
+    return { id: f.id, username: f.username, status, roomName: room?.name ?? null };
+  });
+}
+
+function broadcastFriendsListToWatchers(
+  db: Database.Database,
+  wss: WebSocketServer,
+  userId: string,
+  presence: Map<string, PresenceState>,
+  rooms: Map<string, Room>
+): void {
+  const watchers = getFollowers(db, userId);
+  const watcherIds = new Set(watchers.map((w) => w.user_id));
+  for (const client of wss.clients) {
+    const c = client as IncomingWs;
+    if (c.userId && watcherIds.has(c.userId) && c.readyState === WebSocket.OPEN) {
+      reply(c, {
+        event: 'friends:list',
+        friends: buildFriendList(db, c.userId, presence, rooms),
+      });
     }
   }
 }
@@ -269,10 +306,44 @@ function handleQueueSkip(
   }
 }
 
+function handleFriendAdd(
+  db: Database.Database,
+  ws: IncomingWs,
+  username: string,
+  presence: Map<string, PresenceState>,
+  rooms: Map<string, Room>
+): void {
+  if (!ws.userId || ws.isGuest) {
+    reply(ws, { event: 'friend:error', code: 'NOT_AUTHENTICATED' });
+    return;
+  }
+  try {
+    addFriend(db, ws.userId, username);
+    reply(ws, { event: 'friends:list', friends: buildFriendList(db, ws.userId, presence, rooms) });
+  } catch (err) {
+    reply(ws, { event: 'friend:error', code: (err as Error).message });
+  }
+}
+
+function handleFriendList(
+  db: Database.Database,
+  ws: IncomingWs,
+  presence: Map<string, PresenceState>,
+  rooms: Map<string, Room>
+): void {
+  if (!ws.userId || ws.isGuest) {
+    reply(ws, { event: 'friend:error', code: 'NOT_AUTHENTICATED' });
+    return;
+  }
+  reply(ws, { event: 'friends:list', friends: buildFriendList(db, ws.userId, presence, rooms) });
+}
+
 export function handleDisconnect(
+  db: Database.Database,
   rooms: Map<string, Room>,
   wss: WebSocketServer,
-  ws: IncomingWs
+  ws: IncomingWs,
+  presence: Map<string, PresenceState>
 ): void {
   if (ws.roomId && ws.userId) {
     const updated = leaveRoom(rooms, ws.roomId, ws.userId);
@@ -280,6 +351,11 @@ export function handleDisconnect(
     if (updated) {
       broadcastToRoom(wss, updated, { event: 'state:sync', room: updated });
     }
+  }
+  if (ws.userId) {
+    presence.set(ws.userId, { status: 'offline', roomId: null });
+    broadcastFriendsListToWatchers(db, wss, ws.userId, presence, rooms);
+    if (ws.isGuest) presence.delete(ws.userId);
   }
 }
 
@@ -289,7 +365,8 @@ export function handleMessage(
   ws: IncomingWs,
   raw: string,
   rooms: Map<string, Room>,
-  wss: WebSocketServer
+  wss: WebSocketServer,
+  presence: Map<string, PresenceState>
 ): void {
   let msg: Record<string, unknown>;
   try {
@@ -300,7 +377,12 @@ export function handleMessage(
   }
 
   if (msg['event'] === 'auth') {
+    const prevUserId = ws.userId;
     handleAuth(db, jwtSecret, ws, msg as unknown as AuthMessage);
+    if (ws.userId && ws.userId !== prevUserId) {
+      presence.set(ws.userId, { status: 'online', roomId: null });
+      broadcastFriendsListToWatchers(db, wss, ws.userId, presence, rooms);
+    }
     return;
   }
 
@@ -310,6 +392,10 @@ export function handleMessage(
       return;
     }
     handleRoomCreate(rooms, ws, msg as unknown as RoomCreateMessage);
+    if (ws.userId && ws.roomId) {
+      presence.set(ws.userId, { status: 'online', roomId: ws.roomId });
+      broadcastFriendsListToWatchers(db, wss, ws.userId, presence, rooms);
+    }
     return;
   }
 
@@ -319,11 +405,20 @@ export function handleMessage(
       return;
     }
     handleRoomJoin(rooms, wss, ws, msg as unknown as RoomJoinMessage);
+    if (ws.userId && ws.roomId) {
+      presence.set(ws.userId, { status: 'online', roomId: ws.roomId });
+      broadcastFriendsListToWatchers(db, wss, ws.userId, presence, rooms);
+    }
     return;
   }
 
   if (msg['event'] === 'room:leave') {
+    const prevRoomId = ws.roomId;
     handleRoomLeave(rooms, wss, ws);
+    if (ws.userId && prevRoomId && !ws.roomId) {
+      presence.set(ws.userId, { status: 'online', roomId: null });
+      broadcastFriendsListToWatchers(db, wss, ws.userId, presence, rooms);
+    }
     return;
   }
 
@@ -348,6 +443,20 @@ export function handleMessage(
 
   if (msg['event'] === 'queue:skip') {
     handleQueueSkip(rooms, wss, ws);
+    return;
+  }
+
+  if (msg['event'] === 'friend:add') {
+    if (typeof msg['username'] !== 'string' || !msg['username']) {
+      reply(ws, { event: 'friend:error', code: 'MISSING_FIELDS' });
+      return;
+    }
+    handleFriendAdd(db, ws, msg['username'] as string, presence, rooms);
+    return;
+  }
+
+  if (msg['event'] === 'friend:list') {
+    handleFriendList(db, ws, presence, rooms);
     return;
   }
 

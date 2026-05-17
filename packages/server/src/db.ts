@@ -7,6 +7,14 @@ const SCHEMA = `
     password_hash TEXT NOT NULL,
     created_at   INTEGER NOT NULL DEFAULT (unixepoch())
   );
+
+  CREATE TABLE IF NOT EXISTS friendships (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    friend_id  TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(user_id, friend_id)
+  );
 `;
 
 export function initDb(path: string): Database.Database {

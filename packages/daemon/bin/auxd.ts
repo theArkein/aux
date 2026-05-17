@@ -16,6 +16,7 @@ let mpvVolume = 60;
 const tuiClients = new Set<Socket>();
 let isAuthenticated = false;
 let pendingRoomJoin: string | null = null;
+let latestFriendsList: object | null = null;
 
 function checkDependencies(): void {
   for (const bin of ['yt-dlp', 'mpv']) {
@@ -145,6 +146,7 @@ const wsClient = createWsClient({
 
     if (msg['event'] === 'auth:ok') {
       isAuthenticated = true;
+      wsClient.send({ event: 'friend:list' });
       if (pendingRoomJoin) {
         wsClient.send({ event: 'room:join', name: pendingRoomJoin });
         pendingRoomJoin = null;
@@ -153,6 +155,10 @@ const wsClient = createWsClient({
 
     if (msg['event'] === 'auth:error') {
       pendingRoomJoin = null;
+    }
+
+    if (msg['event'] === 'friends:list') {
+      latestFriendsList = msg;
     }
 
     if (msg['event'] === 'playback:next') {
@@ -170,6 +176,9 @@ const wsClient = createWsClient({
 createIpcServer({
   onConnection(socket) {
     tuiClients.add(socket);
+    if (latestFriendsList) {
+      socket.write(JSON.stringify(latestFriendsList) + '\n');
+    }
     socket.on('end', () => tuiClients.delete(socket));
     socket.on('error', () => tuiClients.delete(socket));
     socket.on('message', (msg: Record<string, unknown>) => {

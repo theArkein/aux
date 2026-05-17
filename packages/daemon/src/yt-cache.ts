@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { dirname } from 'node:path';
 
 export type CacheValue = string | null;
 
@@ -22,12 +21,15 @@ export function loadCache(path?: string): YtCache {
       return {};
     }
     try {
-      const raw = readFileSync(filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, CacheValue>;
+      const raw = JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        return {};
       }
-      return {};
+      const data: Record<string, CacheValue> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (typeof v === 'string' || v === null) data[k] = v;
+      }
+      return data;
     } catch {
       return {};
     }

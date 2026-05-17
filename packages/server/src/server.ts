@@ -43,7 +43,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<ServerHandl
     typedWs.on('close', () => handleDisconnect(db, rooms, wss, typedWs, presence));
   });
 
-  await new Promise<void>((resolve) => httpServer.listen(port, resolve));
+  await new Promise<void>((resolve) => httpServer.listen(port, '0.0.0.0', resolve));
   console.log(`aux-server listening on :${port}`);
 
   return { httpServer, wss, db, rooms, presence };

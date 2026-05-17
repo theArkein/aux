@@ -43,7 +43,19 @@ interface FriendPresence {
   roomName: string | null;
 }
 
-type Mode = 'normal' | 'typing' | 'results';
+interface SpotifyPlaylist {
+  id: string;
+  name: string;
+  trackCount: number;
+}
+
+interface SpotifyProgress {
+  resolved: number;
+  total: number;
+  failed: number;
+}
+
+type Mode = 'normal' | 'typing' | 'results' | 'spotify-loading' | 'spotify-playlists' | 'spotify-importing';
 
 interface PanelBoxProps {
   title: string;
@@ -84,6 +96,11 @@ export default function App(): React.ReactElement {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [friends, setFriends] = useState<FriendPresence[]>([]);
   const [selectedFriendIdx, setSelectedFriendIdx] = useState(0);
+  const [spotifyPlaylists, setSpotifyPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [selectedPlaylistIdx, setSelectedPlaylistIdx] = useState(0);
+  const [spotifyAuthUrl, setSpotifyAuthUrl] = useState<string | null>(null);
+  const [spotifyProgress, setSpotifyProgress] = useState<SpotifyProgress | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const clientRef = useRef<IpcClientHandle | null>(null);
 
   useEffect(() => {
@@ -129,6 +146,41 @@ export default function App(): React.ReactElement {
         if (m['event'] === 'friends:list' && Array.isArray(m['friends'])) {
           setFriends(m['friends'] as FriendPresence[]);
         }
+
+        if (m['event'] === 'spotify:auth:url') {
+          setSpotifyAuthUrl(String(m['url'] ?? ''));
+          setMode('spotify-loading');
+        }
+
+        if (m['event'] === 'spotify:auth:ok') {
+          setSpotifyAuthUrl(null);
+        }
+
+        if (m['event'] === 'spotify:playlists' && Array.isArray(m['playlists'])) {
+          setSpotifyPlaylists(m['playlists'] as SpotifyPlaylist[]);
+          setSelectedPlaylistIdx(0);
+          setMode('spotify-playlists');
+        }
+
+        if (m['event'] === 'spotify:import:progress') {
+          setSpotifyProgress({
+            resolved: Number(m['resolved']),
+            total: Number(m['total']),
+            failed: Number(m['failed']),
+          });
+          setMode('spotify-importing');
+        }
+
+        if (m['event'] === 'spotify:import:done') {
+          setSpotifyProgress(null);
+          setMode('normal');
+          setStatusMsg(`Spotify import: ${Number(m['queued'])} queued, ${Number(m['failed'])} failed`);
+        }
+
+        if (m['event'] === 'spotify:error') {
+          setMode('normal');
+          setStatusMsg(String(m['message'] ?? m['code'] ?? 'Spotify error'));
+        }
       },
       onEnd: exit,
       onError: (err) => { process.stderr.write(err.message + '\n'); exit(); },
@@ -173,6 +225,15 @@ export default function App(): React.ReactElement {
       }
       if (input === 'x') {
         clientRef.current?.send({ event: 'queue:skip' });
+        return;
+      }
+
+      if (input === 'p') {
+        setSpotifyAuthUrl(null);
+        setSpotifyProgress(null);
+        setStatusMsg(null);
+        setMode('spotify-loading');
+        clientRef.current?.send({ event: 'spotify:playlists' });
         return;
       }
 
@@ -234,9 +295,32 @@ export default function App(): React.ReactElement {
         return;
       }
     }
+
+    if (mode === 'spotify-loading' || mode === 'spotify-importing') {
+      if (key.escape) { setMode('normal'); return; }
+    }
+
+    if (mode === 'spotify-playlists') {
+      if (key.escape) { setMode('normal'); return; }
+      if (key.upArrow) { setSelectedPlaylistIdx((i) => Math.max(0, i - 1)); return; }
+      if (key.downArrow) {
+        setSelectedPlaylistIdx((i) => Math.min(spotifyPlaylists.length - 1, i + 1));
+        return;
+      }
+      if (key.return) {
+        const playlist = spotifyPlaylists[selectedPlaylistIdx];
+        if (playlist) {
+          setSpotifyProgress({ resolved: 0, total: playlist.trackCount, failed: 0 });
+          setMode('spotify-importing');
+          clientRef.current?.send({ event: 'spotify:import', playlistId: playlist.id });
+        }
+        return;
+      }
+    }
   });
 
   const searchOverlay = mode === 'typing' || mode === 'results';
+  const spotifyOverlay = mode === 'spotify-loading' || mode === 'spotify-playlists' || mode === 'spotify-importing';
   const clampedElapsed = playback ? Math.min(elapsed, playback.track.duration) : 0;
 
   return (
@@ -246,7 +330,58 @@ export default function App(): React.ReactElement {
         {room && <Text dimColor>  room: {room.name}</Text>}
       </Box>
 
-      {searchOverlay ? (
+      {mode === 'spotify-loading' && (
+        <Box flexDirection="column">
+          {spotifyAuthUrl ? (
+            <>
+              <Text>Opening Spotify auth in browser...</Text>
+              <Text dimColor>If browser did not open, visit:</Text>
+              <Text color="cyan">{spotifyAuthUrl}</Text>
+            </>
+          ) : (
+            <Text>Loading Spotify playlists...</Text>
+          )}
+          <Box marginTop={1}><Text dimColor>Esc: cancel</Text></Box>
+        </Box>
+      )}
+
+      {mode === 'spotify-playlists' && (
+        <Box flexDirection="column">
+          <Text bold color="cyan">Spotify Playlists</Text>
+          <Box marginTop={1} flexDirection="column">
+            {spotifyPlaylists.length === 0
+              ? <Text dimColor>No playlists found</Text>
+              : spotifyPlaylists.map((pl, i) => (
+                  <Box key={pl.id}>
+                    <Text color={i === selectedPlaylistIdx ? 'cyan' : undefined}>
+                      {i === selectedPlaylistIdx ? '▶ ' : '  '}
+                      {pl.name} ({pl.trackCount} tracks)
+                    </Text>
+                  </Box>
+                ))}
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>↑↓: navigate  Enter: import playlist  Esc: cancel</Text>
+          </Box>
+        </Box>
+      )}
+
+      {mode === 'spotify-importing' && (
+        <Box flexDirection="column">
+          <Text bold color="cyan">Importing Spotify playlist...</Text>
+          {spotifyProgress && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text>Resolved: {spotifyProgress.resolved} / {spotifyProgress.total}</Text>
+              {spotifyProgress.failed > 0 && (
+                <Text color="yellow">Skipped (no YouTube match): {spotifyProgress.failed}</Text>
+              )}
+            </Box>
+          )}
+          <Box marginTop={1}><Text dimColor>Esc: cancel</Text></Box>
+        </Box>
+      )}
+
+      {!spotifyOverlay && searchOverlay && (
         <Box flexDirection="column">
           <Box marginBottom={1}>
             <Text bold color="cyan">Search: </Text>
@@ -269,7 +404,9 @@ export default function App(): React.ReactElement {
             </Text>
           </Box>
         </Box>
-      ) : (
+      )}
+
+      {!spotifyOverlay && !searchOverlay && (
         <>
           <Box gap={1}>
             <PanelBox title="Now Playing" focused={focused === 'nowPlaying'}>
@@ -329,11 +466,12 @@ export default function App(): React.ReactElement {
                 : <Text dimColor>No friends</Text>}
             </PanelBox>
           </Box>
-          <Box marginTop={1}>
+          <Box marginTop={1} flexDirection="column">
             <Text dimColor>
-              {'Tab: switch panel  ·  s: search  ·  x: skip  ·  +/-: volume  ·  q: quit TUI'}
+              {'Tab: switch panel  ·  s: search  ·  p: Spotify import  ·  x: skip  ·  +/-: volume  ·  q: quit TUI'}
               {focused === 'friends' && friends[selectedFriendIdx]?.roomName ? '  ·  Enter: join room' : ''}
             </Text>
+            {statusMsg && <Text color="yellow">{statusMsg}</Text>}
           </Box>
         </>
       )}

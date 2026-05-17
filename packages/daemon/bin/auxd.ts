@@ -6,6 +6,13 @@ import { loadCredentials } from '../src/credentials.js';
 import { createWsClient, type WsClientHandle } from '../src/ws-client.js';
 import { createIpcServer } from '../src/ipc-server.js';
 import { searchYoutube } from '../src/youtube-resolver.js';
+import { loadCache, cacheKey } from '../src/yt-cache.js';
+import {
+  getValidToken,
+  startOAuthFlow,
+  fetchPlaylists,
+  fetchPlaylistTracks,
+} from '../src/spotify-client.js';
 import { computeDelay, spawnTrack, sendMpvCommand, MPV_IPC_PATH, type TrackProcess } from '../src/playback-engine.js';
 
 const PID_FILE = '/tmp/aux.pid';
@@ -14,6 +21,7 @@ const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
 let currentTrack: TrackProcess | null = null;
 let mpvVolume = 60;
 const tuiClients = new Set<Socket>();
+const ytCache = loadCache();
 let isAuthenticated = false;
 let pendingRoomJoin: string | null = null;
 let latestFriendsList: object | null = null;
@@ -125,6 +133,87 @@ async function handleIpcMessage(
       wsClient.send({ event: 'room:join', name });
     } else {
       pendingRoomJoin = name;
+    }
+    return;
+  }
+
+  if (msg['event'] === 'spotify:playlists') {
+    const clientId = process.env['SPOTIFY_CLIENT_ID'] ?? '';
+    if (!clientId) {
+      replyToSocket(socket, {
+        event: 'spotify:error',
+        code: 'SPOTIFY_CLIENT_ID_NOT_SET',
+        message: 'Set SPOTIFY_CLIENT_ID env var. Create an app at https://developer.spotify.com/dashboard',
+      });
+      return;
+    }
+    try {
+      let token = await getValidToken(clientId);
+      if (!token) {
+        token = await startOAuthFlow({
+          clientId,
+          onUrl: (url) => replyToSocket(socket, { event: 'spotify:auth:url', url }),
+        });
+        replyToSocket(socket, { event: 'spotify:auth:ok' });
+      }
+      const playlists = await fetchPlaylists(token.access_token);
+      replyToSocket(socket, { event: 'spotify:playlists', playlists });
+    } catch (err) {
+      replyToSocket(socket, { event: 'spotify:error', code: (err as Error).message });
+    }
+    return;
+  }
+
+  if (msg['event'] === 'spotify:import') {
+    const playlistId = String(msg['playlistId'] ?? '');
+    if (!playlistId) {
+      replyToSocket(socket, { event: 'spotify:error', code: 'MISSING_PLAYLIST_ID' });
+      return;
+    }
+    const clientId = process.env['SPOTIFY_CLIENT_ID'] ?? '';
+    const token = await getValidToken(clientId);
+    if (!token) {
+      replyToSocket(socket, { event: 'spotify:error', code: 'NOT_AUTHENTICATED' });
+      return;
+    }
+    try {
+      const spotifyTracks = await fetchPlaylistTracks(token.access_token, playlistId);
+      const total = spotifyTracks.length;
+      let resolved = 0;
+      let failed = 0;
+      replyToSocket(socket, { event: 'spotify:import:progress', resolved: 0, total, failed: 0 });
+
+      for (const st of spotifyTracks) {
+        const key = cacheKey(st.title, st.artist);
+        let youtubeUrl = ytCache.get(key);
+
+        if (youtubeUrl === undefined) {
+          try {
+            const results = await searchYoutube(`${st.title} ${st.artist}`, 1);
+            youtubeUrl = results[0]?.youtubeUrl ?? null;
+          } catch {
+            youtubeUrl = null;
+          }
+          ytCache.set(key, youtubeUrl);
+        }
+
+        if (youtubeUrl) {
+          wsClient.send({
+            event: 'queue:add',
+            youtubeUrl,
+            title: st.title,
+            artist: st.artist,
+            duration: Math.round(st.durationMs / 1000),
+          });
+          resolved++;
+        } else {
+          failed++;
+        }
+        replyToSocket(socket, { event: 'spotify:import:progress', resolved, total, failed });
+      }
+      replyToSocket(socket, { event: 'spotify:import:done', queued: resolved, failed });
+    } catch (err) {
+      replyToSocket(socket, { event: 'spotify:error', code: (err as Error).message });
     }
     return;
   }

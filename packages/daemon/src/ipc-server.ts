@@ -30,5 +30,6 @@ export function createIpcServer({ onConnection }: IpcServerOptions = {}): Server
   });
 
   server.listen(IPC_PATH, () => console.log(`[daemon] IPC socket at ${IPC_PATH}`));
+  process.on('exit', () => rmSync(IPC_PATH, { force: true }));
   return server;
 }

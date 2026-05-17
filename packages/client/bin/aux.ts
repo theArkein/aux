@@ -47,7 +47,7 @@ async function main(): Promise<void> {
       console.error('Guests cannot create rooms. Register first: aux register <username> <password>');
       process.exit(1);
     }
-    await roomCommand('room:create', { name });
+    await daemonRoomCommand('room:create', name);
     return;
   }
 
@@ -57,11 +57,7 @@ async function main(): Promise<void> {
       console.error('Usage: aux join <name>');
       process.exit(1);
     }
-    if (loadCredentials()) {
-      await roomCommand('room:join', { name });
-    } else {
-      await guestJoinCommand(name);
-    }
+    await daemonRoomCommand('room:join', name);
     return;
   }
 
@@ -127,51 +123,8 @@ async function authCommand(action: 'register' | 'login', username: string, passw
   });
 }
 
-async function roomCommand(event: 'room:create' | 'room:join', extra: Record<string, string>): Promise<void> {
-  const creds = loadCredentials();
-  if (!creds) {
-    console.error('Not logged in. Run: aux login <username> <password>');
-    process.exit(1);
-  }
 
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(SERVER_URL);
-
-    ws.on('open', () => {
-      ws.send(JSON.stringify({ event: 'auth', action: 'token', token: creds.token }));
-    });
-
-    ws.on('message', (raw) => {
-      const msg = JSON.parse(raw.toString()) as Record<string, unknown>;
-
-      if (msg['event'] === 'auth:ok') {
-        ws.send(JSON.stringify({ event, ...extra }));
-        return;
-      }
-
-      if (msg['event'] === 'state:sync') {
-        const room = msg['room'] as Record<string, unknown>;
-        const members = (room['members'] as Array<{ username: string }>)
-          .map((m) => m.username)
-          .join(', ');
-        console.log(`Room: ${room['name'] as string} (members: ${members})`);
-        ws.close();
-        resolve();
-        return;
-      }
-
-      if (msg['event'] === 'room:error' || msg['event'] === 'auth:error') {
-        console.error(`Error: ${msg['code'] as string}`);
-        ws.close();
-        reject(new Error(msg['code'] as string));
-      }
-    });
-
-    ws.on('error', reject);
-  });
-}
-
-async function guestJoinCommand(name: string): Promise<void> {
+async function daemonRoomCommand(event: 'room:create' | 'room:join', name: string): Promise<void> {
   await ensureDaemon();
   return new Promise((resolve, reject) => {
     const socket = connect(IPC_PATH);
@@ -181,7 +134,7 @@ async function guestJoinCommand(name: string): Promise<void> {
       if (settled) return;
       settled = true;
       socket.destroy();
-      reject(new Error('Timed out waiting for room join response'));
+      reject(new Error('Timed out waiting for room response'));
     }, 10000);
     function settle(fn: () => void): void {
       if (settled) return;
@@ -191,7 +144,7 @@ async function guestJoinCommand(name: string): Promise<void> {
       fn();
     }
     socket.once('connect', () => {
-      socket.write(JSON.stringify({ event: 'room:join', name }) + '\n');
+      socket.write(JSON.stringify({ event, name }) + '\n');
     });
     socket.on('data', (chunk: Buffer) => {
       buf += chunk.toString();
@@ -202,6 +155,7 @@ async function guestJoinCommand(name: string): Promise<void> {
         try {
           const msg = JSON.parse(line) as Record<string, unknown>;
           if (msg['event'] === 'state:sync') {
+            if (msg['replay']) continue; // skip daemon's initial state replay
             const room = msg['room'] as Record<string, unknown>;
             const members = (room['members'] as Array<{ username: string }>)
               .map((m) => m.username)
@@ -219,6 +173,7 @@ async function guestJoinCommand(name: string): Promise<void> {
     socket.on('error', (err) => settle(() => reject(err)));
   });
 }
+
 
 async function friendAddCommand(username: string): Promise<void> {
   const creds = loadCredentials();

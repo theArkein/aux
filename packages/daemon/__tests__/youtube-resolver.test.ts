@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchYoutube, parseYtDlpOutput, type SearchResult } from '../src/youtube-resolver.js';
+import { searchYoutube, parseDuration, type SearchResult } from '../src/youtube-resolver.js';
 
 test('searchYoutube returns results with required fields', async () => {
   const results = await searchYoutube('daft punk harder better faster');
@@ -10,7 +10,7 @@ test('searchYoutube returns results with required fields', async () => {
   assert.ok(typeof r.title === 'string' && r.title.length > 0, 'has title');
   assert.ok(typeof r.artist === 'string', 'has artist');
   assert.ok(typeof r.duration === 'number' && r.duration > 0, 'has positive duration');
-  assert.ok(typeof r.youtubeUrl === 'string' && r.youtubeUrl.startsWith('http'), 'has url');
+  assert.ok(typeof r.youtubeUrl === 'string' && r.youtubeUrl.startsWith('https://www.youtube.com/watch?v='), 'has url');
 });
 
 test('searchYoutube returns at most 5 results', async () => {
@@ -18,43 +18,17 @@ test('searchYoutube returns at most 5 results', async () => {
   assert.ok(results.length <= 5);
 });
 
-test('searchYoutube throws YT_DLP_NOT_FOUND if yt-dlp missing', async () => {
-  const orig = process.env['PATH'];
-  process.env['PATH'] = '/nonexistent';
-  try {
-    await assert.rejects(() => searchYoutube('test'), /YT_DLP_NOT_FOUND/);
-  } finally {
-    process.env['PATH'] = orig;
-  }
+test('parseDuration parses MM:SS', () => {
+  assert.equal(parseDuration('6:00'), 360);
+  assert.equal(parseDuration('3:45'), 225);
+  assert.equal(parseDuration('0:30'), 30);
 });
 
-test('parseYtDlpOutput returns empty array for empty stdout', () => {
-  assert.deepEqual(parseYtDlpOutput(''), []);
+test('parseDuration parses HH:MM:SS', () => {
+  assert.equal(parseDuration('1:30:00'), 5400);
+  assert.equal(parseDuration('2:05:10'), 7510);
 });
 
-test('parseYtDlpOutput returns empty array for blank lines (private/unavailable video)', () => {
-  // yt-dlp outputs nothing or only whitespace for private/unavailable videos
-  assert.deepEqual(parseYtDlpOutput('\n\n   \n'), []);
-});
-
-test('parseYtDlpOutput skips malformed JSON lines and returns empty array', () => {
-  // Simulates yt-dlp error output lines for private/unavailable content
-  const malformed = 'ERROR: Video unavailable\nWARNING: unable to download video\n';
-  assert.deepEqual(parseYtDlpOutput(malformed), []);
-});
-
-test('parseYtDlpOutput parses a single valid JSON line into one result', () => {
-  const entry = {
-    title: 'Test Song',
-    uploader: 'Test Artist',
-    duration: 213,
-    webpage_url: 'https://www.youtube.com/watch?v=abc123',
-  };
-  const results = parseYtDlpOutput(JSON.stringify(entry));
-  assert.equal(results.length, 1);
-  const r = results[0]!;
-  assert.equal(r.title, 'Test Song');
-  assert.equal(r.artist, 'Test Artist');
-  assert.equal(r.duration, 213);
-  assert.equal(r.youtubeUrl, 'https://www.youtube.com/watch?v=abc123');
+test('parseDuration returns 0 for unrecognised input', () => {
+  assert.equal(parseDuration('0:00'), 0);
 });

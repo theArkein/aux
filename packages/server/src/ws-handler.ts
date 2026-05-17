@@ -232,8 +232,8 @@ function handleQueueAdd(
       duration: msg.duration,
       queuedBy: ws.userId,
     });
-    broadcastToRoom(wss, room, { event: 'queue:update', queue: room.queue });
     const nextTrack = startPlayback(room);
+    broadcastToRoom(wss, room, { event: 'queue:update', queue: room.queue });
     if (nextTrack) {
       const startAt = Date.now() + 200;
       broadcastToRoom(wss, room, { event: 'playback:next', track: nextTrack, startAt });

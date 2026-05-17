@@ -55,7 +55,7 @@ interface SpotifyProgress {
   failed: number;
 }
 
-type Mode = 'normal' | 'typing' | 'results' | 'spotify-loading' | 'spotify-playlists' | 'spotify-importing';
+type Mode = 'normal' | 'typing' | 'searching' | 'results' | 'spotify-loading' | 'spotify-playlists' | 'spotify-importing';
 
 interface PanelBoxProps {
   title: string;
@@ -130,6 +130,7 @@ export default function App(): React.ReactElement {
           setPlayback({ track: typedTrack, startAt });
           setElapsed(0);
           setRoom((prev) => prev ? { ...prev, nowPlaying: typedTrack } : prev);
+          setStatusMsg(`Now playing: ${typedTrack.title}`);
         }
 
         if (m['event'] === 'search:results' && Array.isArray(m['results'])) {
@@ -141,6 +142,15 @@ export default function App(): React.ReactElement {
         if (m['event'] === 'search:error') {
           setMode('normal');
           setQuery('');
+          setStatusMsg(`Search failed: ${String(m['code'] ?? 'unknown error')}`);
+        }
+
+        if (m['event'] === 'queue:error') {
+          const code = String(m['code'] ?? 'unknown error');
+          const msg = code === 'NOT_IN_ROOM'
+            ? 'Join a room first: aux join <name>  (or create one: aux create <name>)'
+            : `Queue error: ${code}`;
+          setStatusMsg(msg);
         }
 
         if (m['event'] === 'friends:list' && Array.isArray(m['friends'])) {
@@ -215,6 +225,7 @@ export default function App(): React.ReactElement {
       if (input === 's') {
         setQuery('');
         setResults([]);
+        setStatusMsg(null);
         setMode('typing');
         return;
       }
@@ -264,6 +275,7 @@ export default function App(): React.ReactElement {
       if (key.return) {
         if (query.trim()) {
           clientRef.current?.send({ event: 'search', query: query.trim() });
+          setMode('searching');
         }
         return;
       }
@@ -275,6 +287,10 @@ export default function App(): React.ReactElement {
         setQuery((q) => q + input);
       }
       return;
+    }
+
+    if (mode === 'searching') {
+      if (key.escape) { setMode('normal'); setQuery(''); return; }
     }
 
     if (mode === 'results') {
@@ -323,7 +339,7 @@ export default function App(): React.ReactElement {
     }
   });
 
-  const searchOverlay = mode === 'typing' || mode === 'results';
+  const searchOverlay = mode === 'typing' || mode === 'searching' || mode === 'results';
   const spotifyOverlay = mode === 'spotify-loading' || mode === 'spotify-playlists' || mode === 'spotify-importing';
   const clampedElapsed = playback ? Math.min(elapsed, playback.track.duration) : 0;
 
@@ -391,6 +407,9 @@ export default function App(): React.ReactElement {
             <Text bold color="cyan">Search: </Text>
             <Text>{query}{mode === 'typing' ? '█' : ''}</Text>
           </Box>
+          {mode === 'searching' && (
+            <Text dimColor>Searching…</Text>
+          )}
           {mode === 'results' && results.length === 0 && (
             <Text dimColor>No results</Text>
           )}
@@ -404,7 +423,7 @@ export default function App(): React.ReactElement {
           ))}
           <Box marginTop={1}>
             <Text dimColor>
-              {mode === 'typing' ? 'Enter: search  Esc: cancel' : '↑↓: navigate  Enter: queue  Esc: cancel'}
+              {mode === 'typing' ? 'Enter: search  Esc: cancel' : mode === 'searching' ? 'Esc: cancel' : '↑↓: navigate  Enter: queue  Esc: cancel'}
             </Text>
           </Box>
         </Box>

@@ -80,13 +80,19 @@ test('queue:add appends track and broadcasts queue:update', async () => {
       duration: 224,
     }));
 
-    const msg = await q.next();
-    assert.equal(msg['event'], 'queue:update');
-    const queue = msg['queue'] as Array<Record<string, unknown>>;
-    assert.equal(queue.length, 1);
-    assert.equal(queue[0]!['title'], 'Harder Better Faster');
-    assert.equal(queue[0]!['artist'], 'Daft Punk');
-    assert.equal(queue[0]!['duration'], 224);
+    // First track immediately starts playing (moves to nowPlaying), so queue is empty.
+    // We verify via playback:next which carries the track data.
+    const updateMsg = await q.next();
+    assert.equal(updateMsg['event'], 'queue:update');
+    const queue = updateMsg['queue'] as Array<Record<string, unknown>>;
+    assert.equal(queue.length, 0); // track is in nowPlaying, not queue
+
+    const pbMsg = await q.next();
+    assert.equal(pbMsg['event'], 'playback:next');
+    const track = pbMsg['track'] as Record<string, unknown>;
+    assert.equal(track['title'], 'Harder Better Faster');
+    assert.equal(track['artist'], 'Daft Punk');
+    assert.equal(track['duration'], 224);
   } finally {
     await closeWs(alice);
   }
@@ -110,13 +116,15 @@ test('queue:add broadcasts to all room members', async () => {
       duration: 248,
     }));
 
-    const [aliceMsg, bobMsg] = await Promise.all([aliceQ.next(), bobQ.next()]);
-    assert.equal(aliceMsg['event'], 'queue:update');
-    assert.equal(bobMsg['event'], 'queue:update');
-    const aliceQueue = aliceMsg['queue'] as Array<Record<string, unknown>>;
-    const bobQueue = bobMsg['queue'] as Array<Record<string, unknown>>;
-    assert.equal(aliceQueue[0]!['title'], 'Get Lucky');
-    assert.equal(bobQueue[0]!['title'], 'Get Lucky');
+    const [aliceUpdate, bobUpdate] = await Promise.all([aliceQ.next(), bobQ.next()]);
+    assert.equal(aliceUpdate['event'], 'queue:update');
+    assert.equal(bobUpdate['event'], 'queue:update');
+    // First track goes to nowPlaying immediately; confirmed via playback:next
+    const [alicePb, bobPb] = await Promise.all([aliceQ.next(), bobQ.next()]);
+    assert.equal(alicePb['event'], 'playback:next');
+    assert.equal(bobPb['event'], 'playback:next');
+    assert.equal((alicePb['track'] as Record<string, unknown>)['title'], 'Get Lucky');
+    assert.equal((bobPb['track'] as Record<string, unknown>)['title'], 'Get Lucky');
   } finally {
     await Promise.all([closeWs(alice), closeWs(bob)]);
   }

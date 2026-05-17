@@ -23,8 +23,21 @@ let mpvVolume = 60;
 const tuiClients = new Set<Socket>();
 const ytCache = loadCache();
 let isAuthenticated = false;
+let currentUsername: string | null = null;
+let pendingRoomCreate: string | null = null;
 let pendingRoomJoin: string | null = null;
 let latestFriendsList: object | null = null;
+let latestStateSync: object | null = null;
+
+interface PendingTrack {
+  youtubeUrl: string;
+  title: string;
+  artist: string;
+  duration: number;
+  socket: Socket;
+  roomName: string;
+}
+let pendingTrackQueue: PendingTrack | null = null;
 
 function checkDependencies(): void {
   for (const bin of ['yt-dlp', 'mpv']) {
@@ -41,7 +54,7 @@ function checkDependencies(): void {
 checkDependencies();
 
 writeFileSync(PID_FILE, String(process.pid));
-process.on('exit', () => rmSync(PID_FILE, { force: true }));
+process.on('exit', () => { currentTrack?.kill(); rmSync(PID_FILE, { force: true }); });
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
 
@@ -102,7 +115,21 @@ async function handleIpcMessage(
       replyToSocket(socket, { event: 'queue:error', code: 'MISSING_FIELDS' });
       return;
     }
-    wsClient.send({ event: 'queue:add', youtubeUrl, title, artist, duration });
+    const inRoom = !!(latestStateSync as Record<string, unknown> | null)?.['room'];
+    if (inRoom) {
+      wsClient.send({ event: 'queue:add', youtubeUrl, title, artist, duration });
+      return;
+    }
+    if (!isAuthenticated || !currentUsername) {
+      replyToSocket(socket, { event: 'queue:error', code: 'NOT_IN_ROOM' });
+      return;
+    }
+    // Not in a room — auto-create one named after the user, queue track on state:sync
+    const roomName = currentUsername;
+    pendingTrackQueue = { youtubeUrl, title, artist, duration, socket, roomName };
+    socket.once('end', () => { pendingTrackQueue = null; });
+    socket.once('error', () => { pendingTrackQueue = null; });
+    wsClient.send({ event: 'room:create', name: roomName });
     return;
   }
 
@@ -120,6 +147,20 @@ async function handleIpcMessage(
 
   if (msg['event'] === 'queue:skip') {
     wsClient.send({ event: 'queue:skip' });
+    return;
+  }
+
+  if (msg['event'] === 'room:create') {
+    const name = String(msg['name'] ?? '');
+    if (!name) {
+      replyToSocket(socket, { event: 'room:error', code: 'MISSING_FIELDS' });
+      return;
+    }
+    if (isAuthenticated) {
+      wsClient.send({ event: 'room:create', name });
+    } else {
+      pendingRoomCreate = name;
+    }
     return;
   }
 
@@ -241,9 +282,50 @@ const wsClient = createWsClient({
   onMessage(msg) {
     broadcast(msg);
 
+    if (msg['event'] === 'state:sync') {
+      latestStateSync = msg;
+      if (pendingTrackQueue) {
+        const { youtubeUrl, title, artist, duration } = pendingTrackQueue;
+        pendingTrackQueue = null;
+        wsClient.send({ event: 'queue:add', youtubeUrl, title, artist, duration });
+      }
+    }
+
+    if (msg['event'] === 'queue:update' && latestStateSync) {
+      const snap = latestStateSync as Record<string, unknown>;
+      latestStateSync = { ...snap, room: { ...(snap['room'] as Record<string, unknown>), queue: msg['queue'] } };
+    }
+
+    if (msg['event'] === 'playback:next' && latestStateSync) {
+      const snap = latestStateSync as Record<string, unknown>;
+      latestStateSync = {
+        ...snap,
+        room: {
+          ...(snap['room'] as Record<string, unknown>),
+          nowPlaying: msg['track'],
+          playbackStartedAt: msg['startAt'],
+        },
+      };
+    }
+
+    if (msg['event'] === 'room:error' && pendingTrackQueue) {
+      const code = String(msg['code'] ?? '');
+      if (code === 'ROOM_NAME_TAKEN') {
+        wsClient.send({ event: 'room:join', name: pendingTrackQueue.roomName });
+      } else {
+        replyToSocket(pendingTrackQueue.socket, { event: 'queue:error', code });
+        pendingTrackQueue = null;
+      }
+    }
+
     if (msg['event'] === 'auth:ok') {
       isAuthenticated = true;
+      currentUsername = String(msg['username'] ?? '') || null;
       wsClient.send({ event: 'friend:list' });
+      if (pendingRoomCreate) {
+        wsClient.send({ event: 'room:create', name: pendingRoomCreate });
+        pendingRoomCreate = null;
+      }
       if (pendingRoomJoin) {
         wsClient.send({ event: 'room:join', name: pendingRoomJoin });
         pendingRoomJoin = null;
@@ -251,6 +333,7 @@ const wsClient = createWsClient({
     }
 
     if (msg['event'] === 'auth:error') {
+      pendingRoomCreate = null;
       pendingRoomJoin = null;
     }
 
@@ -273,6 +356,10 @@ const wsClient = createWsClient({
 createIpcServer({
   onConnection(socket) {
     tuiClients.add(socket);
+    if (latestStateSync) {
+      const replay = { ...(latestStateSync as Record<string, unknown>), replay: true };
+      socket.write(JSON.stringify(replay) + '\n');
+    }
     if (latestFriendsList) {
       socket.write(JSON.stringify(latestFriendsList) + '\n');
     }

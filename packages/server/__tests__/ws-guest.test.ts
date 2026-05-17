@@ -155,13 +155,12 @@ test('guest can queue:add a track', async () => {
     const guestUpdate = await qg.next();
     assert.equal(aliceUpdate['event'], 'queue:update');
     assert.equal(guestUpdate['event'], 'queue:update');
-    const queue = aliceUpdate['queue'] as Array<{ title: string }>;
-    assert.equal(queue[0]!.title, 'GuestTrack');
-    // drain playback:next so buffer stays clean
+    // First track goes to nowPlaying immediately (queue is empty); track data in playback:next
     const alicePb = await qa.next();
     const guestPb = await qg.next();
     assert.equal(alicePb['event'], 'playback:next');
     assert.equal(guestPb['event'], 'playback:next');
+    assert.equal((alicePb['track'] as Record<string, unknown>)['title'], 'GuestTrack');
   } finally {
     await closeWs(alice);
     await closeWs(guest);

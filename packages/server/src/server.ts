@@ -50,6 +50,12 @@ export async function startServer(opts: ServerOptions = {}): Promise<ServerHandl
 }
 
 export async function stopServer({ httpServer, wss, db }: ServerHandle): Promise<void> {
+  // Terminate active connections first so their close handlers fire (and use the DB)
+  // before we shut the database down.
+  const closeEvents = [...wss.clients].map(
+    (client) => new Promise<void>((resolve) => { client.once('close', resolve); client.terminate(); })
+  );
+  await Promise.all(closeEvents);
   wss.close();
   closeDb(db);
   await new Promise<void>((resolve, reject) =>

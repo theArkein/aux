@@ -1,5 +1,3 @@
-import { spawn } from 'node:child_process';
-
 export interface SearchResult {
   title: string;
   artist: string;
@@ -7,57 +5,63 @@ export interface SearchResult {
   youtubeUrl: string;
 }
 
-export function parseYtDlpOutput(stdout: string): SearchResult[] {
-  const results: SearchResult[] = [];
-  for (const line of stdout.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const entry = JSON.parse(line) as Record<string, unknown>;
-      results.push({
-        title: String(entry['title'] ?? 'Unknown'),
-        artist: String(entry['uploader'] ?? entry['channel'] ?? 'Unknown'),
-        duration: Number(entry['duration'] ?? 0),
-        youtubeUrl: String(entry['webpage_url'] ?? ''),
-      });
-    } catch {
-      // skip malformed lines
-    }
-  }
-  return results;
+const INNERTUBE_ENDPOINT = 'https://www.youtube.com/youtubei/v1/search';
+// EgIQAQ== = video-only filter
+const VIDEO_FILTER = 'EgIQAQ%3D%3D';
+
+export function parseDuration(text: string): number {
+  const parts = text.split(':').map(Number);
+  if (parts.length === 2) return (parts[0]! * 60) + parts[1]!;
+  if (parts.length === 3) return (parts[0]! * 3600) + (parts[1]! * 60) + parts[2]!;
+  return 0;
 }
 
 export function searchYoutube(query: string, limit = 5): Promise<SearchResult[]> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      `ytsearch${limit}:${query}`,
-      '--dump-json',
-      '--no-playlist',
-      '--quiet',
-    ];
+  return fetch(INNERTUBE_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00' } },
+      query,
+      params: VIDEO_FILTER,
+    }),
+  })
+    .then((r) => r.json() as Promise<Record<string, unknown>>)
+    .then((data) => {
+      const contents = (
+        (data['contents'] as Record<string, unknown>)?.['twoColumnSearchResultsRenderer'] as Record<string, unknown>
+      )?.['primaryContents'] as Record<string, unknown>;
+      const items = (
+        ((contents?.['sectionListRenderer'] as Record<string, unknown>)
+          ?.['contents'] as Record<string, unknown>[])?.[0]
+          ?.['itemSectionRenderer'] as Record<string, unknown>
+      )?.['contents'] as Record<string, unknown>[] | undefined;
 
-    const proc = spawn('yt-dlp', args, { env: process.env });
+      if (!Array.isArray(items)) return [];
 
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-
-    proc.on('error', (err) => {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        reject(new Error('YT_DLP_NOT_FOUND'));
-      } else {
-        reject(err);
+      const results: SearchResult[] = [];
+      for (const item of items) {
+        if (results.length >= limit) break;
+        const vr = item['videoRenderer'] as Record<string, unknown> | undefined;
+        if (!vr) continue;
+        const videoId = String(vr['videoId'] ?? '');
+        if (!videoId) continue;
+        const title = String(
+          ((vr['title'] as Record<string, unknown>)?.['runs'] as Record<string, unknown>[])?.[0]?.['text'] ?? 'Unknown'
+        );
+        const artist = String(
+          ((vr['ownerText'] as Record<string, unknown>)?.['runs'] as Record<string, unknown>[])?.[0]?.['text'] ?? 'Unknown'
+        );
+        const durationText = String(
+          (vr['lengthText'] as Record<string, unknown>)?.['simpleText'] ?? '0:00'
+        );
+        results.push({
+          title,
+          artist,
+          duration: parseDuration(durationText),
+          youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        });
       }
+      return results;
     });
-
-    proc.on('close', (code) => {
-      if (code !== 0 && !stdout) {
-        reject(new Error(`yt-dlp exited with code ${code}: ${stderr.trim()}`));
-        return;
-      }
-
-      resolve(parseYtDlpOutput(stdout));
-    });
-  });
 }

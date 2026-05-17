@@ -145,6 +145,10 @@ export default function App(): React.ReactElement {
     return () => clearInterval(id);
   }, [playback]);
 
+  useEffect(() => {
+    setSelectedFriendIdx((i) => Math.min(i, Math.max(0, friends.length - 1)));
+  }, [friends]);
+
   useInput((input, key) => {
     if (mode === 'normal') {
       if (input === 'q') { exit(); return; }
@@ -328,7 +332,7 @@ export default function App(): React.ReactElement {
           <Box marginTop={1}>
             <Text dimColor>
               {'Tab: switch panel  ·  s: search  ·  x: skip  ·  +/-: volume  ·  q: quit TUI'}
-              {focused === 'friends' && friends.length > 0 ? '  ·  Enter: join room' : ''}
+              {focused === 'friends' && friends[selectedFriendIdx]?.roomName ? '  ·  Enter: join room' : ''}
             </Text>
           </Box>
         </>

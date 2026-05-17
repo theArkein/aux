@@ -1,0 +1,31 @@
+{
+  "name": "aux",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "aux": "./dist/bin/aux.js",
+    "auxd": "./dist/bin/auxd.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev:aux": "tsx bin/aux.ts",
+    "dev:auxd": "tsx bin/auxd.ts",
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "ink": "^5.0.0",
+    "react": "^18.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.0.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

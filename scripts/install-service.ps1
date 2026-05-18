@@ -1,7 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 $RepoDir = Split-Path -Parent $PSScriptRoot
-$NodeBin = (Get-Command node).Source
+$NodeBin = (Get-Command node -ErrorAction SilentlyContinue).Source
+if (-not $NodeBin) {
+    Write-Error "node not found in PATH. Install Node.js >= 20."
+    exit 1
+}
 $EnvFile = "$RepoDir\packages\server\.env"
 $ServerScript = "$RepoDir\packages\server\dist\src\server.js"
 
@@ -10,16 +14,14 @@ if (-not (Test-Path $EnvFile)) {
     exit 1
 }
 
-$envVars = @{}
-Get-Content $EnvFile | ForEach-Object {
-    if ($_ -match '^([^#][^=]*)=(.*)$') {
-        $envVars[$Matches[1].Trim()] = $Matches[2].Trim()
-    }
+if (-not (Test-Path $ServerScript)) {
+    Write-Error "Server not built. Run: npm run build --workspace=packages/server"
+    exit 1
 }
 
-$action = New-ScheduledTaskAction -Execute $NodeBin -Argument $ServerScript -WorkingDirectory "$RepoDir\packages\server"
+$action = New-ScheduledTaskAction -Execute $NodeBin -Argument "`"$ServerScript`"" -WorkingDirectory "$RepoDir\packages\server"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+$settings = New-ScheduledTaskSettingsSet -RestartCount 10 -RestartInterval (New-TimeSpan -Minutes 1)
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 
 Register-ScheduledTask -TaskName "aux-server" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force

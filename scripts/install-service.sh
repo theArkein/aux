@@ -3,10 +3,21 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NODE_BIN="$(which node)"
+
+if [[ -z "$NODE_BIN" ]]; then
+  echo "Error: node not found in PATH. Install Node.js >= 20."
+  exit 1
+fi
+
 ENV_FILE="$REPO_DIR/packages/server/.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Error: $ENV_FILE not found. Copy .env.example and fill in JWT_SECRET."
+  exit 1
+fi
+
+if [[ ! -f "$REPO_DIR/packages/server/dist/src/server.js" ]]; then
+  echo "Error: Server not built. Run: npm run build --workspace=packages/server"
   exit 1
 fi
 
@@ -15,11 +26,24 @@ if [[ "$(uname)" == "Darwin" ]]; then
   mkdir -p "$HOME/Library/LaunchAgents"
   mkdir -p "$HOME/.aux"
 
+  # XML-escape a value: & < > ' "
+  xml_escape() {
+    local v="$1"
+    v="${v//&/&amp;}"
+    v="${v//</&lt;}"
+    v="${v//>/&gt;}"
+    v="${v//\'/&apos;}"
+    v="${v//\"/&quot;}"
+    printf '%s' "$v"
+  }
+
   # Read env vars from .env file into plist format
   ENV_DICT=""
   while IFS='=' read -r key val; do
     [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
     key="${key// /}"
+    key="$(xml_escape "$key")"
+    val="$(xml_escape "$val")"
     ENV_DICT+="    <key>$key</key>
     <string>$val</string>
 "
@@ -72,7 +96,7 @@ After=network.target
 Type=simple
 WorkingDirectory=$REPO_DIR/packages/server
 ExecStart=$NODE_BIN $REPO_DIR/packages/server/dist/src/server.js
-EnvironmentFile=$ENV_FILE
+EnvironmentFile="$ENV_FILE"
 Restart=always
 RestartSec=3
 StandardOutput=append:$HOME/.aux/server.log

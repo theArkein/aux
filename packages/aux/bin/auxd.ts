@@ -62,7 +62,9 @@ function startTrack(youtubeUrl: string, startAt: number, ws: WsClientHandle): vo
   }
   const delay = computeDelay(startAt, Date.now());
   setTimeout(() => {
-    const proc = spawnTrack(youtubeUrl, MPV_IPC_PATH, mpvVolume);
+    const proc = spawnTrack(youtubeUrl, MPV_IPC_PATH, mpvVolume, (msg) => {
+      broadcast({ event: 'playback:error', message: msg });
+    });
     currentTrack = proc;
     proc.onExit(() => {
       if (currentTrack !== proc) return;

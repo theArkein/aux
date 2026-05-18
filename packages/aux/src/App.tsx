@@ -115,6 +115,8 @@ export default function App(): React.ReactElement {
             const startAt = r.playbackStartedAt;
             setPlayback({ track: r.nowPlaying, startAt });
             setElapsed(Math.max(0, Math.floor((Date.now() - startAt) / 1000)));
+          } else {
+            setPlayback(null);
           }
         }
 
@@ -143,6 +145,10 @@ export default function App(): React.ReactElement {
           setMode('normal');
           setQuery('');
           setStatusMsg(`Search failed: ${String(m['code'] ?? 'unknown error')}`);
+        }
+
+        if (m['event'] === 'playback:error') {
+          setStatusMsg(`Playback error: ${String(m['message'] ?? 'unknown')}`);
         }
 
         if (m['event'] === 'queue:error') {

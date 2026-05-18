@@ -11,7 +11,8 @@
     "dev:server": "npm run dev --workspace=packages/server",
     "start:server": "npm run dev --workspace=packages/server",
     "start:client": "tsx packages/aux/bin/auxd.ts & tsx packages/aux/bin/aux.ts; pkill -f auxd",
-    "stop": "pkill -f auxd; pkill -f 'packages/server'; pkill -f mpv; echo stopped"
+    "stop": "pkill -f auxd; pkill -f 'packages/server'; pkill -f mpv; echo stopped",
+    "restart:server": "npm run build --workspace=packages/server && launchctl kickstart -k gui/$(id -u)/com.aux.server && echo 'server restarted'"
   },
   "engines": {
     "node": ">=20"

@@ -12,7 +12,7 @@ export interface TrackProcess {
   onExit(cb: () => void): void;
 }
 
-export function spawnTrack(youtubeUrl: string, ipcPath = MPV_IPC_PATH, volume = 60, onError?: (msg: string) => void): TrackProcess {
+export function spawnTrack(youtubeUrl: string, ipcPath = MPV_IPC_PATH, volume = 100, onError?: (msg: string) => void): TrackProcess {
   const ytdlp = spawn('yt-dlp', ['-f', 'bestaudio', '-q', '-o', '-', youtubeUrl], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });

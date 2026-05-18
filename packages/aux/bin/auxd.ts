@@ -19,7 +19,7 @@ import { computeDelay, spawnTrack, sendMpvCommand, MPV_IPC_PATH, type TrackProce
 await depsCheck();
 
 let currentTrack: TrackProcess | null = null;
-let mpvVolume = 60;
+let mpvVolume = 100;
 const tuiClients = new Set<Socket>();
 const ytCache = loadCache();
 let isAuthenticated = false;

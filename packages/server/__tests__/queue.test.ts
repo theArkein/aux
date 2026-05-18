@@ -10,6 +10,9 @@ function makeRoom(): Room {
     hostId: 'u1',
     members: [{ id: 'u1', username: 'alice' }],
     queue: [],
+    nowPlaying: null,
+    playbackStartedAt: null,
+    skipVotes: [],
     createdAt: Date.now(),
   };
 }

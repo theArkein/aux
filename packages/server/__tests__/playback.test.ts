@@ -14,6 +14,7 @@ function makeRoom(queue: Track[] = []): Room {
     queue,
     nowPlaying: null,
     playbackStartedAt: null,
+    skipVotes: [],
     createdAt: Date.now(),
   };
 }

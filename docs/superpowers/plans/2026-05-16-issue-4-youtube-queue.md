@@ -623,7 +623,7 @@ import { createIpcServer } from '../src/ipc-server.js';
 import { searchYoutube } from '../src/youtube-resolver.js';
 
 const PID_FILE = '/tmp/aux.pid';
-const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:7700';
 
 const tuiClients = new Set<Socket>();
 

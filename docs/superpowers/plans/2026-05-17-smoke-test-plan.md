@@ -25,7 +25,7 @@ Before starting any scenario, confirm:
 cp packages/server/.env.example packages/server/.env
 # Edit packages/server/.env and set:
 # JWT_SECRET=smoke-test-secret
-# PORT=3000
+# PORT=7700
 # DATABASE_PATH=./smoke-test.db
 ```
 
@@ -36,7 +36,7 @@ cp packages/server/.env.example packages/server/.env
 alias aux-server="JWT_SECRET=smoke-test-secret DATABASE_PATH=./smoke-test.db npx tsx packages/server/src/server.ts"
 alias aux="npx tsx packages/client/bin/aux.ts"
 alias auxd="npx tsx packages/daemon/bin/auxd.ts"
-alias aux-ws="npx wscat -c ws://localhost:3000"
+alias aux-ws="npx wscat -c ws://localhost:7700"
 ```
 
 **Reset between scenarios** — run this to clear all state:
@@ -79,7 +79,7 @@ aux-server
 
 Expected output:
 ```
-aux-server listening on :3000
+aux-server listening on :7700
 ```
 
 Leave Terminal A running for all subsequent scenarios.
@@ -239,7 +239,7 @@ Open Terminal C with wscat, log in as alice, create lounge, then log in as bob a
 
 ```bash
 # Terminal C
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 ```
 
 Paste (one line at a time, wait for response):
@@ -419,7 +419,7 @@ Expected: when track 1 ends, track 2 starts automatically within ~1s. `Now Playi
 
 ### 5d: Multi-user sync (two-machine test)
 
-> If you have a second machine: set `AUX_SERVER_URL=ws://<alice-machine-ip>:3000` and run `aux join lounge` there. Both machines should start playing the same track within 200ms of each other (you'll hear them in sync if close together).
+> If you have a second machine: set `AUX_SERVER_URL=ws://<alice-machine-ip>:7700` and run `aux join lounge` there. Both machines should start playing the same track within 200ms of each other (you'll hear them in sync if close together).
 >
 > On a single machine: verify `startAt` logic by reading `packages/daemon/__tests__/playback-engine.test.ts` — the unit tests cover the timing contract. The integration smoke here relies on the track starting correctly (Scenario 5a).
 
@@ -447,7 +447,7 @@ If the queue was empty, queue another track (Scenario 4) and verify it starts pl
 - [ ] **Via wscat in Terminal C, join as Bob:**
 
 ```bash
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 ```
 
 ```json
@@ -523,7 +523,7 @@ Process exits with non-zero code.
 > **Single-machine limitation:** the daemon uses a hardcoded socket `/tmp/aux.sock` and PID file `/tmp/aux.pid`, so two daemons cannot coexist. To test guest queuing in the TUI, you need a second machine. On a single machine, verify guest queue via wscat:
 
 ```bash
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 ```
 
 ```json
@@ -594,7 +594,7 @@ Expected: Bob listed with `○` (offline indicator).
 - [ ] **In Terminal C, log in as Bob and join the room:**
 
 ```bash
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 ```
 
 ```json
@@ -801,4 +801,4 @@ These tests require two separate machines (or two OS users with separate home di
 | Guest TUI (full UI flow) | Second daemon conflicts with first on `/tmp/aux.sock` | `packages/server/__tests__/ws-guest.test.ts` |
 | Vote-skip with two TUI clients | Same socket conflict | `packages/server/__tests__/ws-skip.test.ts` |
 
-**Workaround:** use `npx wscat -c ws://localhost:3000` for the second user in multi-user scenarios — it gives direct server access without spawning a conflicting daemon.
+**Workaround:** use `npx wscat -c ws://localhost:7700` for the second user in multi-user scenarios — it gives direct server access without spawning a conflicting daemon.

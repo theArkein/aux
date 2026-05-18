@@ -52,7 +52,7 @@ npx tsx packages/client/bin/aux.ts register alice alice123
 # Ensure alice is logged in first
 npx tsx packages/client/bin/aux.ts login alice alice123
 # Start daemon, check server log shows authenticated connection
-AUX_SERVER_URL=ws://localhost:3000 npx tsx packages/daemon/bin/auxd.ts &
+AUX_SERVER_URL=ws://localhost:7700 npx tsx packages/daemon/bin/auxd.ts &
 sleep 2
 # Server terminal should show auth event for alice; daemon log: [auxd] running (pid N)
 cat /tmp/aux.pid
@@ -62,7 +62,7 @@ npx tsx packages/client/bin/aux.ts quit
 **Daemon falls back to guest with no credentials**
 ```bash
 rm -f ~/.aux-credentials
-AUX_SERVER_URL=ws://localhost:3000 npx tsx packages/daemon/bin/auxd.ts &
+AUX_SERVER_URL=ws://localhost:7700 npx tsx packages/daemon/bin/auxd.ts &
 sleep 2
 # Server terminal should show auth event for guest_xxxx
 npx tsx packages/client/bin/aux.ts quit
@@ -84,7 +84,7 @@ npx tsx packages/client/bin/aux.ts create lounge
 npx tsx packages/client/bin/aux.ts register bob bob123 2>/dev/null || true
 AUX_SERVER_CREDS=bob npx tsx packages/client/bin/aux.ts join lounge
 # Or via wscat:
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 # send: {"event":"auth","action":"login","username":"bob","password":"bob123"}
 # send: {"event":"room:join","name":"lounge"}
 # Expected: state:sync with members: [alice, bob]
@@ -99,13 +99,13 @@ npx tsx packages/client/bin/aux.ts create lounge
 **Host transfer when creator leaves** (wscat, two sessions)
 ```bash
 # Session A — alice
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 # {"event":"auth","action":"login","username":"alice","password":"alice123"}
 # {"event":"room:create","name":"transfer-test"}
 # note hostId in response
 
 # Session B — bob (new terminal)
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 # {"event":"auth","action":"login","username":"bob","password":"bob123"}
 # {"event":"room:join","name":"transfer-test"}
 
@@ -243,7 +243,7 @@ Expected: title and artist lines populated in Now Playing panel
 **Two users: 1 vote shows counter, does not skip**
 ```bash
 # Open wscat session as bob, join the room (2 members total).
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 # {"event":"auth","action":"login","username":"bob","password":"bob123"}
 # {"event":"room:join","name":"lounge"}
 
@@ -272,7 +272,7 @@ npx wscat -c ws://localhost:3000
 
 **Join without credentials gets guest_xxxx username**
 ```bash
-npx wscat -c ws://localhost:3000
+npx wscat -c ws://localhost:7700
 # {"event":"auth","action":"guest"}
 # Expected: {"event":"auth:ok","username":"guest_xxxx",...}
 # No "token" field (or token is a short-lived guest token, not a saved JWT)
@@ -389,7 +389,7 @@ Expected: TUI returns to normal immediately; no further queue:add events sent
 ## Automated harness (covers Scenarios 2c/2d, 4–8 in one shot)
 
 ```bash
-# Server must be running on :3000 before executing
+# Server must be running on :7700 before executing
 node scripts/smoke-ws.mjs
 # Expected: 37 passed, 0 failed
 ```

@@ -5,13 +5,13 @@
  *
  * Usage: node scripts/smoke-ws.mjs
  *
- * Expects server running on ws://localhost:3000 with JWT_SECRET=smoke-test-secret
+ * Expects server running on ws://localhost:7700 with JWT_SECRET=smoke-test-secret
  * and users alice/alice123 and bob/bob123 already registered.
  */
 
 import { WebSocket } from 'ws';
 
-const URL = 'ws://localhost:3000';
+const URL = 'ws://localhost:7700';
 let passed = 0;
 let failed = 0;
 

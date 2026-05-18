@@ -145,7 +145,7 @@ import { searchYoutube } from '../src/youtube-resolver.js';
 import { computeDelay, spawnTrack, sendMpvCommand, MPV_IPC_PATH, type TrackProcess } from '../src/playback-engine.js';
 
 const PID_FILE = '/tmp/aux.pid';
-const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:7700';
 
 let currentTrack: TrackProcess | null = null;
 let mpvVolume = 60;

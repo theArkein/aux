@@ -74,7 +74,7 @@ The server is unchanged in code. Two additions:
 2. **`.env.example`** — committed to `packages/server/`:
 
 ```
-PORT=3000
+PORT=7700
 JWT_SECRET=change-me
 DATABASE_PATH=./aux.db
 ANTHROPIC_API_KEY=
@@ -105,7 +105,7 @@ cloudflared tunnel create aux
 # credentials-file: ~/.cloudflared/<tunnel-id>.json
 # ingress:
 #   - hostname: aux.yourdomain.com
-#     service: http://localhost:3000
+#     service: http://localhost:7700
 #   - service: http_status:404
 
 # Add DNS record (CNAME in Cloudflare dashboard pointing to tunnel)

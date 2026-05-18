@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-export const SERVER_URL = 'wss://aux.saradsingh.com.np';
+export const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'wss://aux.saradsingh.com.np';
 
 export const IPC_PATH = '/tmp/aux.sock';
 export const PID_FILE = '/tmp/aux.pid';

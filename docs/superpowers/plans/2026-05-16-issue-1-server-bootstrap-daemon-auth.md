@@ -136,7 +136,7 @@ packages/client/
 - [ ] **Step 4: Create `packages/server/.env.example`**
 
 ```
-PORT=3000
+PORT=7700
 JWT_SECRET=change-me-in-production
 DATABASE_PATH=./aux.db
 ```
@@ -595,7 +595,7 @@ export interface ServerHandle {
 }
 
 export async function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
-  const port = opts.port ?? Number(process.env['PORT'] ?? 3000);
+  const port = opts.port ?? Number(process.env['PORT'] ?? 7700);
   const jwtSecret = opts.jwtSecret ?? process.env['JWT_SECRET'];
   const dbPath = opts.dbPath ?? process.env['DATABASE_PATH'] ?? './aux.db';
 
@@ -961,7 +961,7 @@ import { createWsClient } from '../src/ws-client.js';
 import { createIpcServer } from '../src/ipc-server.js';
 
 const PID_FILE = '/tmp/aux.pid';
-const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:7700';
 
 const tuiClients = new Set<Socket>();
 
@@ -1088,7 +1088,7 @@ import { saveCredentials } from '../../daemon/src/credentials.js';
 
 const IPC_PATH = '/tmp/aux.sock';
 const PID_FILE = '/tmp/aux.pid';
-const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:7700';
 
 const [,, command, ...args] = process.argv;
 
@@ -1232,14 +1232,14 @@ In terminal 1 — start server:
 cd packages/server && JWT_SECRET=dev tsx src/server.ts
 ```
 
-Expected: `aux-server listening on :3000`
+Expected: `aux-server listening on :7700`
 
 In terminal 2 — register and login:
 ```bash
-AUX_SERVER_URL=ws://localhost:3000 tsx packages/client/bin/aux.ts register smoketest Pass123!
+AUX_SERVER_URL=ws://localhost:7700 tsx packages/client/bin/aux.ts register smoketest Pass123!
 # Expected: Logged in as smoketest
 
-AUX_SERVER_URL=ws://localhost:3000 tsx packages/client/bin/aux.ts login smoketest Pass123!
+AUX_SERVER_URL=ws://localhost:7700 tsx packages/client/bin/aux.ts login smoketest Pass123!
 # Expected: Logged in as smoketest
 
 cat ~/.aux/credentials.json
@@ -1248,7 +1248,7 @@ cat ~/.aux/credentials.json
 
 In terminal 3 — start daemon and verify it authenticates:
 ```bash
-AUX_SERVER_URL=ws://localhost:3000 tsx packages/daemon/bin/auxd.ts
+AUX_SERVER_URL=ws://localhost:7700 tsx packages/daemon/bin/auxd.ts
 # Expected: [daemon] connected to server
 # (daemon reads stored token and sends auth:token to server)
 ```

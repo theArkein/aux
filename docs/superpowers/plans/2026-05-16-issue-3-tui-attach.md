@@ -319,7 +319,7 @@ const __dirname = dirname(__filename);
 
 const PID_FILE = '/tmp/aux.pid';
 const IPC_PATH = '/tmp/aux.sock';
-const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:7700';
 const DAEMON_BIN = resolve(__dirname, '../../daemon/bin/auxd.ts');
 
 const [,, command, ...args] = process.argv;
@@ -543,7 +543,7 @@ Expected: all 15 tests pass.
 
 ```bash
 # Terminal 1: start server
-AUX_SERVER_URL=ws://localhost:3000 JWT_SECRET=dev npm run dev:server
+AUX_SERVER_URL=ws://localhost:7700 JWT_SECRET=dev npm run dev:server
 
 # Terminal 2: register + attach TUI
 npx tsx packages/client/bin/aux.ts register alice password123

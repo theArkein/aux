@@ -95,7 +95,7 @@ Users must have `yt-dlp` and `mpv` installed. Check for them on daemon startup a
 ## Environment Variables (server)
 
 ```
-PORT=3000
+PORT=7700
 JWT_SECRET=<required>
 DATABASE_PATH=./aux.db
 ANTHROPIC_API_KEY=<optional, enables AI DJ mode>

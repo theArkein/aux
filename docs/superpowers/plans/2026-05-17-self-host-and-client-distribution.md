@@ -65,7 +65,7 @@ to:
 
 Create `packages/server/.env.example`:
 ```
-PORT=3000
+PORT=7700
 JWT_SECRET=change-me-to-a-long-random-string
 DATABASE_PATH=./aux.db
 ANTHROPIC_API_KEY=
@@ -77,11 +77,11 @@ ANTHROPIC_API_KEY=
 cd packages/server && JWT_SECRET=test tsx src/server.ts &
 sleep 1
 # Should show a connection from an external IP, not just localhost
-curl -s http://0.0.0.0:3000 || echo "connected (expected non-200 or refused - server is WS-only)"
+curl -s http://0.0.0.0:7700 || echo "connected (expected non-200 or refused - server is WS-only)"
 kill %1
 ```
 
-Expected: server process starts without error, `aux-server listening on :3000` is printed.
+Expected: server process starts without error, `aux-server listening on :7700` is printed.
 
 - [ ] **Step 4: Commit**
 

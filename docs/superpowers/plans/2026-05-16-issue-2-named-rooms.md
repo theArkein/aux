@@ -504,7 +504,7 @@ export interface ServerHandle {
 }
 
 export async function startServer(opts: ServerOptions = {}): Promise<ServerHandle> {
-  const port = opts.port ?? Number(process.env['PORT'] ?? 3000);
+  const port = opts.port ?? Number(process.env['PORT'] ?? 7700);
   const jwtSecret = opts.jwtSecret ?? process.env['JWT_SECRET'];
   const dbPath = opts.dbPath ?? process.env['DATABASE_PATH'] ?? './aux.db';
 
@@ -754,7 +754,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { saveCredentials, loadCredentials } from '../src/credentials.js';
 
 const PID_FILE = '/tmp/aux.pid';
-const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:3000';
+const SERVER_URL = process.env['AUX_SERVER_URL'] ?? 'ws://localhost:7700';
 
 const [,, command, ...args] = process.argv;
 
